@@ -2,28 +2,6 @@
 
 Automation scripts to create IP allowlist rules in Vercel Firewall that **block all traffic except from whitelisted IPs**.
 
-## Key Difference: Bypass vs Allowlist
-
-```plaintext
-┌─────────────────────────────────────────────────────────────────┐
-│  BYPASS RULES (old behavior)                                    │
-│  ────────────────────────────                                   │
-│  Whitelisted IPs → Skip WAF → Your App                         │
-│  All Other IPs   → WAF Check → Your App                        │
-│                                                                 │
-│  Result: ALL traffic reaches your app                          │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  ALLOWLIST RULES (this tool)                                    │
-│  ──────────────────────────                                     │
-│  Whitelisted IPs → Your App                                    │
-│  All Other IPs   → BLOCKED                                     │
-│                                                                 │
-│  Result: ONLY whitelisted traffic reaches your app             │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ## Quick Start
 
 ### 1. Set Up Environment
@@ -136,6 +114,37 @@ ip,vendor_name,notes
 - `notes` (optional): Additional notes
 
 > **Note:** Only IPv4 is supported. IPv6 addresses will be rejected.
+
+### CSV Escaping Rules
+
+The script follows RFC 4180 CSV conventions:
+
+| Scenario | How to Handle | Example |
+|----------|---------------|---------|
+| Field contains comma | Wrap in double quotes | `"Acme, Inc"` |
+| Field contains double quote | Wrap in quotes, double the quote | `"Company ""Quoted"""` |
+| Field contains newline | Wrap in double quotes | `"Line1\nLine2"` |
+| Field contains single quote | No escaping needed | `Mario's Shop` or `"Mario's Shop"` |
+| Simple text | No quotes needed | `Acme Corp` |
+
+**Examples:**
+
+```csv
+# Simple fields - no quotes needed
+1.2.3.4,Acme Corp,Payment gateway
+
+# Comma in field - wrap in quotes
+5.6.7.0/24,"Acme, Inc",Vendor name has comma
+
+# Double quotes in field - wrap and double them
+10.20.30.40,"Company ""Best""",Name with quotes
+
+# Single quotes - no special handling needed
+192.168.1.100,Mario's Shop,Single quotes are fine
+
+# Mixed - only quote fields that need it
+203.0.113.50,"O'Brien, Ltd",Irish vendor with comma
+```
 
 ## Hostname Scoping
 

@@ -431,6 +431,53 @@ remove_allowlist_rule() {
 # CSV Parsing
 # =============================================================================
 
+# Parse a single CSV line respecting quoted fields
+# Handles: commas inside quotes, escaped quotes (""), single quotes (no escaping needed)
+# Sets global array: CSV_FIELDS
+parse_csv_line() {
+  local line="$1"
+  CSV_FIELDS=()
+  local field=""
+  local in_quotes=false
+  local i=0
+  local len=${#line}
+  
+  while [ $i -lt $len ]; do
+    local char="${line:$i:1}"
+    local next_char="${line:$((i+1)):1}"
+    
+    if [ "$in_quotes" = true ]; then
+      if [ "$char" = '"' ]; then
+        if [ "$next_char" = '"' ]; then
+          # Escaped quote ("") - add single quote and skip next
+          field+="$char"
+          ((i++))
+        else
+          # End of quoted field
+          in_quotes=false
+        fi
+      else
+        field+="$char"
+      fi
+    else
+      if [ "$char" = '"' ]; then
+        # Start of quoted field
+        in_quotes=true
+      elif [ "$char" = ',' ]; then
+        # Field separator - save current field and start new one
+        CSV_FIELDS+=("$field")
+        field=""
+      else
+        field+="$char"
+      fi
+    fi
+    ((i++))
+  done
+  
+  # Add the last field
+  CSV_FIELDS+=("$field")
+}
+
 parse_csv() {
   local csv_file="$1"
   local ips_array="[]"
@@ -440,27 +487,32 @@ parse_csv() {
   
   log_info "Parsing CSV file: $csv_file"
   
-  while IFS=, read -r ip vendor_name notes || [ -n "$ip" ]; do
+  while IFS= read -r line || [ -n "$line" ]; do
     ((line_num++))
     
     # Skip empty lines and comments
-    [[ -z "$ip" || "$ip" =~ ^# ]] && continue
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    
+    # Parse CSV line respecting quotes
+    parse_csv_line "$line"
+    
+    # Extract fields
+    local ip="${CSV_FIELDS[0]:-}"
+    local vendor_name="${CSV_FIELDS[1]:-}"
+    local notes="${CSV_FIELDS[2]:-}"
     
     # Trim whitespace
     ip=$(trim "$ip")
     vendor_name=$(trim "$vendor_name")
     notes=$(trim "$notes")
     
-    # Remove surrounding quotes if present
-    ip="${ip%\"}"
-    ip="${ip#\"}"
-    vendor_name="${vendor_name%\"}"
-    vendor_name="${vendor_name#\"}"
-    notes="${notes%\"}"
-    notes="${notes#\"}"
-    
     # Skip header row
     if [ "$ip" = "ip" ]; then
+      continue
+    fi
+    
+    # Skip if no IP
+    if [ -z "$ip" ]; then
       continue
     fi
     
@@ -481,6 +533,8 @@ parse_csv() {
     # Add to IPs array
     ips_array=$(echo "$ips_array" | jq --arg ip "$ip" '. + [$ip]')
     ((valid_count++))
+    
+    log_debug "Line $line_num: $ip ($vendor_name)"
     
   done < "$csv_file"
   
