@@ -16,7 +16,8 @@
 #   ./vercel-ip-allowlist.sh apply vendor-ips.csv       # Create/update allowlist rule
 #   ./vercel-ip-allowlist.sh show                       # Show current allowlist
 #   ./vercel-ip-allowlist.sh disable                    # Disable the rule (don't delete)
-#   ./vercel-ip-allowlist.sh remove                     # Remove the rule entirely
+#   ./vercel-ip-allowlist.sh remove                     # Remove a single rule
+#   ./vercel-ip-allowlist.sh purge                      # Remove ALL auto-managed rules (safe)
 #   DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv  # Preview
 #
 # Environment variables:
@@ -707,8 +708,9 @@ cleanup_duplicate_rules() {
     if [ -n "$rule_id" ] && [ "$rule_id" != "null" ]; then
       log_info "Removing duplicate rule: $rule_id"
       
+      # IMPORTANT: Vercel API requires "value: null" even for deletions
       local request_body
-      request_body=$(jq -n --arg id "$rule_id" '{action: "rules.remove", id: $id}')
+      request_body=$(jq -n --arg id "$rule_id" '{action: "rules.remove", id: $id, value: null}')
       
       api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body" > /dev/null
       rate_limit_sleep
@@ -913,21 +915,24 @@ disable_allowlist_rule() {
 }
 
 # Remove the allowlist rule with retry logic
+# Handles transient Vercel API errors with exponential backoff
 remove_allowlist_rule() {
   local project_id="$1"
   local rule_id="$2"
-  local max_retries="${3:-3}"
+  local max_retries="${3:-5}"
   
   local query_string
   query_string=$(build_query_string "$project_id")
   
+  # IMPORTANT: Vercel API requires "value: null" even for deletions
   local request_body
   request_body=$(jq -n \
     --arg id "$rule_id" \
-    '{action: "rules.remove", id: $id}')
+    '{action: "rules.remove", id: $id, value: null}')
   
   local retry=0
-  local delay=2
+  local delay=2  # Start with 2 seconds for retries
+  local max_delay=60  # Cap at 60 seconds
   
   while [ "$retry" -lt "$max_retries" ]; do
     local response
@@ -942,16 +947,19 @@ remove_allowlist_rule() {
       return 0
     fi
     
-    # Check for internal error - these are often transient
+    # Check for retryable errors
     local error_code
     error_code=$(echo "$body" | jq -r '.error.code // empty' 2>/dev/null)
     
-    if [ "$error_code" = "FIREWALL_INTERNAL_ERROR" ]; then
+    # Retry on internal errors or 5xx status codes
+    if [ "$error_code" = "FIREWALL_INTERNAL_ERROR" ] || [ "$http_code" -ge 500 ]; then
       retry=$((retry + 1))
       if [ "$retry" -lt "$max_retries" ]; then
-        log_warn "Vercel internal error removing rule $rule_id, retrying in ${delay}s... (attempt $((retry+1))/$max_retries)"
+        log_warn "Vercel error (HTTP $http_code) removing rule $rule_id, retrying in ${delay}s... (attempt $((retry+1))/$max_retries)"
         sleep "$delay"
-        delay=$((delay * 2))  # Exponential backoff
+        # Exponential backoff with jitter
+        delay=$((delay * 2 + RANDOM % 5))
+        [ "$delay" -gt "$max_delay" ] && delay="$max_delay"
         continue
       fi
     fi
@@ -1243,8 +1251,8 @@ cmd_apply() {
             log_warn "Failed to remove rule: $rule_id (will continue anyway)"
             ((removal_failures++))
           fi
-          # Longer delay between removals to avoid rate limiting
-          sleep 2
+          # Brief delay between removals
+          sleep 1
         done
         
         if [ "$removal_failures" -gt 0 ]; then
@@ -1457,6 +1465,160 @@ cmd_remove() {
     log_error "Failed to remove rule"
     exit 1
   fi
+}
+
+# Remove ALL rules managed by this tool (including chunked parts)
+# This only removes rules with names matching our naming pattern
+#
+# Environment variables:
+#   PURGE_DELAY     - Seconds between deletions (default: 1)
+#   PURGE_RETRIES   - Max retries per rule (default: 5)
+#   PURGE_DISABLE_FIRST - Set to "true" to disable rules before removing
+#   PURGE_REVERSE   - Set to "true" to delete in reverse order (last first)
+cmd_purge() {
+  local project_id="${PROJECT_ID:?PROJECT_ID is required}"
+  local delay="${PURGE_DELAY:-1}"
+  local max_retries="${PURGE_RETRIES:-5}"
+  local disable_first="${PURGE_DISABLE_FIRST:-false}"
+  local reverse_order="${PURGE_REVERSE:-false}"
+  
+  log_info "Fetching firewall configuration for project $project_id..."
+  
+  local config
+  config=$(get_firewall_config "$project_id")
+  if [ $? -ne 0 ]; then
+    exit 1
+  fi
+  
+  # Find ALL rules matching our naming pattern
+  local all_rules
+  all_rules=$(find_allowlist_rules "$config")
+  
+  local rule_count
+  rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
+  
+  if [ "$rule_count" -eq 0 ]; then
+    log_info "No auto-managed allowlist rules found."
+    log_info "Only rules with name starting with '$RULE_NAME' would be removed."
+    exit 0
+  fi
+  
+  echo ""
+  echo "=============================================="
+  echo "  Auto-Managed Rules Found"
+  echo "=============================================="
+  echo ""
+  log_info "Found $rule_count rule(s) managed by this tool:"
+  echo ""
+  
+  # Show all matching rules
+  echo "$all_rules" | jq -r '.[] | "  - \(.id): \(.name) (active=\(.active))"'
+  
+  echo ""
+  log_warn "This will PERMANENTLY DELETE all $rule_count rule(s) listed above."
+  log_warn "Only rules with names starting with '$RULE_NAME' will be removed."
+  log_warn "Pre-existing rules with other names are NOT affected."
+  echo ""
+  log_info "Options: delay=${delay}s, retries=${max_retries}, disable_first=${disable_first}, reverse=${reverse_order}"
+  echo ""
+  
+  if [ "${DRY_RUN:-false}" = "true" ]; then
+    echo "=============================================="
+    echo "  DRY RUN - No changes made"
+    echo "=============================================="
+    echo ""
+    echo "Would remove $rule_count rule(s)."
+    echo ""
+    echo "Tuning options (set via environment variables):"
+    echo "  PURGE_DELAY=10        - Longer delay between deletions"
+    echo "  PURGE_RETRIES=10      - More retries per rule"
+    echo "  PURGE_DISABLE_FIRST=true - Disable rules before removing"
+    echo "  PURGE_REVERSE=true    - Delete in reverse order (Part 6 first)"
+    exit 0
+  fi
+  
+  read -p "Type 'PURGE' to confirm deletion of all $rule_count rules: " CONFIRM
+  if [ "$CONFIRM" != "PURGE" ]; then
+    echo "Aborted."
+    exit 1
+  fi
+  
+  echo ""
+  
+  # Get rule IDs (optionally in reverse order)
+  local rule_ids
+  if [ "$reverse_order" = "true" ]; then
+    log_info "Processing rules in reverse order..."
+    rule_ids=$(echo "$all_rules" | jq -r '.[].id' | tac 2>/dev/null || echo "$all_rules" | jq -r '[.[].id] | reverse | .[]')
+  else
+    rule_ids=$(echo "$all_rules" | jq -r '.[].id')
+  fi
+  
+  # Optionally disable all rules first
+  if [ "$disable_first" = "true" ]; then
+    log_info "Disabling all $rule_count rule(s) first..."
+    echo ""
+    for rule_id in $rule_ids; do
+      if [ -n "$rule_id" ] && [ "$rule_id" != "null" ]; then
+        log_info "  Disabling: $rule_id..."
+        disable_allowlist_rule "$project_id" "$rule_id" 2>/dev/null || true
+        sleep "$delay"
+      fi
+    done
+    echo ""
+    log_info "All rules disabled. Waiting 3s before removal..."
+    sleep 3
+  fi
+  
+  log_info "Removing $rule_count rule(s)..."
+  echo ""
+  
+  local success_count=0
+  local fail_count=0
+  
+  for rule_id in $rule_ids; do
+    if [ -n "$rule_id" ] && [ "$rule_id" != "null" ]; then
+      local rule_name
+      rule_name=$(echo "$all_rules" | jq -r --arg id "$rule_id" '.[] | select(.id == $id) | .name')
+      
+      log_info "Removing: $rule_name ($rule_id)..."
+      
+      if remove_allowlist_rule "$project_id" "$rule_id" "$max_retries"; then
+        ((success_count++))
+        log_info "  Removed successfully"
+        audit_log "ALLOWLIST_PURGE_REMOVED" "rule_id=$rule_id rule_name=$rule_name"
+      else
+        ((fail_count++))
+        log_warn "  Failed to remove (may need manual cleanup)"
+      fi
+      
+      # Delay between deletions
+      log_debug "Waiting ${delay}s before next operation..."
+      sleep "$delay"
+    fi
+  done
+  
+  echo ""
+  echo "=============================================="
+  echo "  Purge Complete"
+  echo "=============================================="
+  echo ""
+  log_info "Successfully removed: $success_count rule(s)"
+  
+  if [ "$fail_count" -gt 0 ]; then
+    log_warn "Failed to remove: $fail_count rule(s)"
+    log_warn ""
+    log_warn "Troubleshooting tips:"
+    log_warn "  1. Wait a few minutes and try again (Vercel API may be overloaded)"
+    log_warn "  2. Try: PURGE_DELAY=10 PURGE_RETRIES=10 ./vercel-ip-allowlist.sh purge"
+    log_warn "  3. Try: PURGE_DISABLE_FIRST=true ./vercel-ip-allowlist.sh purge"
+    log_warn "  4. Try: PURGE_REVERSE=true ./vercel-ip-allowlist.sh purge"
+    log_warn "  5. Delete manually via Vercel dashboard"
+    audit_log "ALLOWLIST_PURGE_PARTIAL" "success=$success_count failed=$fail_count"
+    exit 1
+  fi
+  
+  audit_log "ALLOWLIST_PURGE_COMPLETE" "removed=$success_count"
 }
 
 cmd_backup() {
@@ -1697,7 +1859,8 @@ USAGE:
   $0 optimize <csv_file> [output] Optimize IPs into CIDR ranges to reduce count
   $0 show                         Show current allowlist configuration
   $0 disable                      Disable the allowlist rule (keeps config)
-  $0 remove                       Remove the allowlist rule entirely
+  $0 remove                       Remove a single allowlist rule
+  $0 purge                        Remove ALL auto-managed rules (chunked parts too)
   $0 backup                       Export current firewall configuration
   $0 --help                       Show this help message
 
@@ -1746,8 +1909,14 @@ EXAMPLES:
   # Disable rule temporarily
   PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh disable
 
-  # Remove rule completely
+  # Remove a single rule
   PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh remove
+
+  # Remove ALL auto-managed rules (safe - only removes rules created by this tool)
+  ./vercel-ip-allowlist.sh purge
+
+  # Preview what purge would delete (dry run)
+  DRY_RUN=true ./vercel-ip-allowlist.sh purge
 
   # Scope to specific hostname
   RULE_HOSTNAME="api.crocs.com" PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh apply vendor-ips.csv
@@ -1846,6 +2015,9 @@ main() {
       ;;
     remove)
       cmd_remove
+      ;;
+    purge)
+      cmd_purge
       ;;
     backup)
       cmd_backup
