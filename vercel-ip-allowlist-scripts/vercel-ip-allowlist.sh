@@ -116,6 +116,182 @@ is_ipv6() {
   return 1
 }
 
+# =============================================================================
+# CIDR Aggregation Functions
+# =============================================================================
+
+# Convert IP to 32-bit integer
+ip_to_int() {
+  local ip="$1"
+  local ip_part="${ip%%/*}"
+  IFS='.' read -ra octets <<< "$ip_part"
+  echo $(( (${octets[0]} << 24) + (${octets[1]} << 16) + (${octets[2]} << 8) + ${octets[3]} ))
+}
+
+# Convert 32-bit integer to IP
+int_to_ip() {
+  local int="$1"
+  echo "$(( (int >> 24) & 255 )).$(( (int >> 16) & 255 )).$(( (int >> 8) & 255 )).$(( int & 255 ))"
+}
+
+# Get CIDR prefix for a block size (block size must be power of 2)
+block_size_to_prefix() {
+  local size="$1"
+  local prefix=32
+  local s=1
+  while [ "$s" -lt "$size" ]; do
+    s=$((s * 2))
+    prefix=$((prefix - 1))
+  done
+  echo "$prefix"
+}
+
+# Check if IP is aligned to a given block size
+is_aligned() {
+  local ip_int="$1"
+  local block_size="$2"
+  [ $((ip_int % block_size)) -eq 0 ]
+}
+
+# Find the largest CIDR block that fits starting at ip_int and covering up to max_count IPs
+# Returns: "prefix count" where prefix is the CIDR prefix and count is how many IPs it covers
+find_largest_cidr() {
+  local ip_int="$1"
+  local max_count="$2"
+  
+  local best_prefix=32
+  local best_count=1
+  
+  # Try progressively larger block sizes (must be power of 2 and aligned)
+  local block_size=1
+  while [ "$block_size" -le "$max_count" ]; do
+    # Check alignment
+    if is_aligned "$ip_int" "$block_size"; then
+      best_prefix=$(block_size_to_prefix "$block_size")
+      best_count="$block_size"
+    else
+      # Not aligned for this size, stop
+      break
+    fi
+    block_size=$((block_size * 2))
+  done
+  
+  echo "$best_prefix $best_count"
+}
+
+# Aggregate a sorted list of IP integers into CIDR blocks
+# Input: newline-separated list of IP integers (sorted)
+# Output: newline-separated list of CIDR notations
+aggregate_ips_to_cidrs() {
+  local ip_ints="$1"
+  local result=""
+  
+  # Convert to array (compatible with bash 3.x on macOS)
+  local -a ips=()
+  while IFS= read -r line; do
+    [ -n "$line" ] && ips+=("$line")
+  done <<< "$ip_ints"
+  
+  local count=${#ips[@]}
+  if [ "$count" -eq 0 ]; then
+    return
+  fi
+  
+  local i=0
+  while [ "$i" -lt "$count" ]; do
+    local start_ip="${ips[$i]}"
+    
+    # Find contiguous range starting at this IP
+    local range_end="$i"
+    while [ "$((range_end + 1))" -lt "$count" ]; do
+      local next_ip="${ips[$((range_end + 1))]}"
+      if [ "$next_ip" -eq "$((ips[range_end] + 1))" ]; then
+        range_end=$((range_end + 1))
+      else
+        break
+      fi
+    done
+    
+    local range_count=$((range_end - i + 1))
+    
+    # Greedily assign CIDR blocks to cover this contiguous range
+    local pos="$i"
+    while [ "$pos" -le "$range_end" ]; do
+      local remaining=$((range_end - pos + 1))
+      local current_ip="${ips[$pos]}"
+      
+      # Find largest valid CIDR starting at current_ip covering up to remaining IPs
+      local cidr_info
+      cidr_info=$(find_largest_cidr "$current_ip" "$remaining")
+      local prefix
+      prefix=$(echo "$cidr_info" | cut -d' ' -f1)
+      local covered
+      covered=$(echo "$cidr_info" | cut -d' ' -f2)
+      
+      # Output CIDR
+      local ip_str
+      ip_str=$(int_to_ip "$current_ip")
+      if [ "$prefix" -eq 32 ]; then
+        result="${result}${ip_str}"$'\n'
+      else
+        result="${result}${ip_str}/${prefix}"$'\n'
+      fi
+      
+      pos=$((pos + covered))
+    done
+    
+    i=$((range_end + 1))
+  done
+  
+  echo -n "$result"
+}
+
+# Main CIDR optimization function
+# Input: JSON array of IPs (may include existing CIDRs)
+# Output: JSON array of optimized IPs/CIDRs
+optimize_ip_list() {
+  local ips_json="$1"
+  
+  # Separate individual IPs from existing CIDRs
+  local individual_ips
+  individual_ips=$(echo "$ips_json" | jq -r '.[] | select(contains("/") | not)')
+  
+  local existing_cidrs
+  existing_cidrs=$(echo "$ips_json" | jq -r '.[] | select(contains("/"))')
+  
+  # Convert individual IPs to integers and sort
+  local ip_ints=""
+  while IFS= read -r ip; do
+    [ -z "$ip" ] && continue
+    local ip_int
+    ip_int=$(ip_to_int "$ip")
+    ip_ints="${ip_ints}${ip_int}"$'\n'
+  done <<< "$individual_ips"
+  
+  # Sort integers
+  local sorted_ints
+  sorted_ints=$(echo -n "$ip_ints" | sort -n | uniq)
+  
+  # Aggregate to CIDRs
+  local aggregated
+  aggregated=$(aggregate_ips_to_cidrs "$sorted_ints")
+  
+  # Combine with existing CIDRs and output as JSON
+  local all_entries=""
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    all_entries="${all_entries}${entry}"$'\n'
+  done <<< "$aggregated"
+  
+  while IFS= read -r cidr; do
+    [ -z "$cidr" ] && continue
+    all_entries="${all_entries}${cidr}"$'\n'
+  done <<< "$existing_cidrs"
+  
+  # Convert to JSON array (deduplicated)
+  echo -n "$all_entries" | sort -u | jq -R -s 'split("\n") | map(select(length > 0))'
+}
+
 # Write audit log entry
 audit_log() {
   local action="$1"
@@ -447,12 +623,12 @@ get_firewall_config() {
 }
 
 # Find our managed allowlist rule(s) in the config
-# Returns all matching rules (there might be duplicates)
+# Returns all matching rules (including chunked "Part X/Y" rules and duplicates)
 find_allowlist_rules() {
   local config="$1"
   local rules=""
   
-  log_debug "Searching for rules with name: $RULE_NAME"
+  log_debug "Searching for rules starting with name: $RULE_NAME"
   
   # Handle empty or invalid config
   if [ -z "$config" ] || [ "$config" = "{}" ] || [ "$config" = "null" ]; then
@@ -461,8 +637,9 @@ find_allowlist_rules() {
     return 0
   fi
   
+  # Match rules that exactly match our name OR start with our name (for "Part X/Y" suffix)
   # Structure 1: Nested under .active.rules (most common from API)
-  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.active.rules[]? | select(.name == $name)] // []' 2>/dev/null) || rules="[]"
+  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.active.rules[]? | select(.name == $name or (.name | startswith($name + " (Part")))] // []' 2>/dev/null) || rules="[]"
   
   if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
     log_debug "Found rules in .active.rules: $rules"
@@ -471,7 +648,7 @@ find_allowlist_rules() {
   fi
   
   # Structure 2: Direct .rules array
-  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.rules[]? | select(.name == $name)] // []' 2>/dev/null) || rules="[]"
+  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.rules[]? | select(.name == $name or (.name | startswith($name + " (Part")))] // []' 2>/dev/null) || rules="[]"
   
   if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
     log_debug "Found rules in .rules: $rules"
@@ -623,6 +800,88 @@ update_allowlist_rule() {
   fi
 }
 
+# Create or update the allowlist rule with a custom name (for chunked rules)
+update_allowlist_rule_with_name() {
+  local project_id="$1"
+  local ips_json="$2"
+  local action="$3"  # "insert" or "update"
+  local existing_rule_id="${4:-}"
+  local custom_name="${5:-$RULE_NAME}"
+  local hostname="${RULE_HOSTNAME:-}"
+  
+  local query_string
+  query_string=$(build_query_string "$project_id")
+  
+  # Build conditions array
+  local conditions
+  if [ -n "$hostname" ]; then
+    # Scoped to specific hostname
+    conditions=$(jq -n \
+      --arg hostname "$hostname" \
+      --argjson ips "$ips_json" \
+      '[
+        {"type": "host", "op": "eq", "value": $hostname},
+        {"type": "ip_address", "op": "ninc", "value": $ips}
+      ]')
+  else
+    # Project-wide
+    conditions=$(jq -n \
+      --argjson ips "$ips_json" \
+      '[{"type": "ip_address", "op": "ninc", "value": $ips}]')
+  fi
+  
+  # Build the rule value with custom name
+  local rule_value
+  rule_value=$(jq -n \
+    --arg name "$custom_name" \
+    --arg description "$RULE_DESCRIPTION" \
+    --argjson conditions "$conditions" \
+    '{
+      name: $name,
+      description: $description,
+      active: true,
+      conditionGroup: [{conditions: $conditions}],
+      action: {
+        mitigate: {
+          action: "deny"
+        }
+      }
+    }')
+  
+  # Build the request body
+  local request_body
+  if [ "$action" = "update" ] && [ -n "$existing_rule_id" ]; then
+    request_body=$(jq -n \
+      --arg action "rules.update" \
+      --arg id "$existing_rule_id" \
+      --argjson value "$rule_value" \
+      '{action: $action, id: $id, value: $value}')
+  else
+    request_body=$(jq -n \
+      --arg action "rules.insert" \
+      --argjson value "$rule_value" \
+      '{action: $action, id: null, value: $value}')
+  fi
+  
+  log_debug "Request body: $request_body"
+  
+  local response
+  response=$(api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body")
+  
+  local http_code
+  http_code=$(echo "$response" | tail -n1)
+  local body
+  body=$(echo "$response" | sed '$d')
+  
+  if [ "$http_code" -eq 200 ]; then
+    return 0
+  else
+    log_error "Failed to $action rule (HTTP $http_code)"
+    echo "$body" | jq '.' 2>/dev/null || echo "$body"
+    return 1
+  fi
+}
+
 # Disable the allowlist rule (set active=false)
 disable_allowlist_rule() {
   local project_id="$1"
@@ -653,10 +912,11 @@ disable_allowlist_rule() {
   fi
 }
 
-# Remove the allowlist rule
+# Remove the allowlist rule with retry logic
 remove_allowlist_rule() {
   local project_id="$1"
   local rule_id="$2"
+  local max_retries="${3:-3}"
   
   local query_string
   query_string=$(build_query_string "$project_id")
@@ -666,133 +926,127 @@ remove_allowlist_rule() {
     --arg id "$rule_id" \
     '{action: "rules.remove", id: $id}')
   
-  local response
-  response=$(api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body")
+  local retry=0
+  local delay=2
   
-  local http_code
-  http_code=$(echo "$response" | tail -n1)
-  local body
-  body=$(echo "$response" | sed '$d')
-  
-  if [ "$http_code" -eq 200 ]; then
-    return 0
-  else
-    log_error "Failed to remove rule (HTTP $http_code)"
-    echo "$body" | jq '.' 2>/dev/null || echo "$body"
-    return 1
-  fi
-}
-
-# =============================================================================
-# CSV Parsing
-# =============================================================================
-
-# Parse a single CSV line respecting quoted fields
-# Handles: commas inside quotes, escaped quotes (""), single quotes (no escaping needed)
-# Sets global array: CSV_FIELDS
-parse_csv_line() {
-  local line="$1"
-  CSV_FIELDS=()
-  local field=""
-  local in_quotes=false
-  local i=0
-  local len=${#line}
-  
-  while [ $i -lt $len ]; do
-    local char="${line:$i:1}"
-    local next_char="${line:$((i+1)):1}"
+  while [ "$retry" -lt "$max_retries" ]; do
+    local response
+    response=$(api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body")
     
-    if [ "$in_quotes" = true ]; then
-      if [ "$char" = '"' ]; then
-        if [ "$next_char" = '"' ]; then
-          # Escaped quote ("") - add single quote and skip next
-          field+="$char"
-          ((i++))
-        else
-          # End of quoted field
-          in_quotes=false
-        fi
-      else
-        field+="$char"
-      fi
-    else
-      if [ "$char" = '"' ]; then
-        # Start of quoted field
-        in_quotes=true
-      elif [ "$char" = ',' ]; then
-        # Field separator - save current field and start new one
-        CSV_FIELDS+=("$field")
-        field=""
-      else
-        field+="$char"
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    local body
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" -eq 200 ]; then
+      return 0
+    fi
+    
+    # Check for internal error - these are often transient
+    local error_code
+    error_code=$(echo "$body" | jq -r '.error.code // empty' 2>/dev/null)
+    
+    if [ "$error_code" = "FIREWALL_INTERNAL_ERROR" ]; then
+      retry=$((retry + 1))
+      if [ "$retry" -lt "$max_retries" ]; then
+        log_warn "Vercel internal error removing rule $rule_id, retrying in ${delay}s... (attempt $((retry+1))/$max_retries)"
+        sleep "$delay"
+        delay=$((delay * 2))  # Exponential backoff
+        continue
       fi
     fi
-    ((i++))
+    
+    log_error "Failed to remove rule $rule_id (HTTP $http_code)"
+    echo "$body" | jq '.' 2>/dev/null || echo "$body"
+    return 1
   done
   
-  # Add the last field
-  CSV_FIELDS+=("$field")
+  log_error "Failed to remove rule $rule_id after $max_retries attempts"
+  return 1
 }
 
+
+# =============================================================================
+# CSV Parsing (Optimized)
+# =============================================================================
+
+# Fast inline IP validation using BASH_REMATCH (no subshells)
+# Returns: 0 = valid IPv4, 1 = invalid, 2 = IPv6
+validate_ip_fast() {
+  local ip="$1"
+  
+  # Quick reject IPv6
+  [[ "$ip" == *:* ]] && return 2
+  
+  # IPv4 regex check with CIDR support
+  [[ "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})(/([0-9]|[1-2][0-9]|3[0-2]))?$ ]] || return 1
+  
+  # Validate octets are <= 255 using BASH_REMATCH (no subprocess)
+  (( BASH_REMATCH[1] <= 255 && BASH_REMATCH[2] <= 255 && 
+     BASH_REMATCH[3] <= 255 && BASH_REMATCH[4] <= 255 )) || return 1
+  
+  return 0
+}
+
+# Parse CSV using awk for speed
+# Handles: comments, header row, quoted fields, whitespace trimming
+# Compatible with both BSD awk (macOS) and gawk (Linux)
 parse_csv() {
   local csv_file="$1"
-  local ips_array="[]"
-  local line_num=0
+  local valid_ips=""
   local valid_count=0
   local error_count=0
+  local line_num=0
   
   log_info "Parsing CSV file: $csv_file"
   
-  while IFS= read -r line || [ -n "$line" ]; do
-    ((line_num++))
-    
+  # Use awk to extract IPs from CSV (handles quotes, skips comments/headers)
+  # Uses FS=',' which works for standard CSVs (IP field won't contain commas)
+  local extracted_ips
+  extracted_ips=$(awk -F',' '
     # Skip empty lines and comments
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
     
-    # Parse CSV line respecting quotes
-    parse_csv_line "$line"
+    # Process data lines
+    NF > 0 {
+      ip = $1
+      # Remove surrounding quotes if present
+      gsub(/^[[:space:]]*"?/, "", ip)
+      gsub(/"?[[:space:]]*$/, "", ip)
+      # Skip header row
+      if (tolower(ip) == "ip") next
+      # Skip empty
+      if (ip == "") next
+      # Output: line_number:ip
+      print NR ":" ip
+    }
+  ' "$csv_file")
+  
+  # Validate each IP (fast inline validation)
+  while IFS=':' read -r line_num ip; do
+    [ -z "$ip" ] && continue
     
-    # Extract fields
-    local ip="${CSV_FIELDS[0]:-}"
-    local vendor_name="${CSV_FIELDS[1]:-}"
-    local notes="${CSV_FIELDS[2]:-}"
+    local validation_result
+    validate_ip_fast "$ip"
+    validation_result=$?
     
-    # Trim whitespace
-    ip=$(trim "$ip")
-    vendor_name=$(trim "$vendor_name")
-    notes=$(trim "$notes")
-    
-    # Skip header row
-    if [ "$ip" = "ip" ]; then
-      continue
-    fi
-    
-    # Skip if no IP
-    if [ -z "$ip" ]; then
-      continue
-    fi
-    
-    # Check for IPv6
-    if is_ipv6 "$ip"; then
+    if [ $validation_result -eq 2 ]; then
       log_error "Line $line_num: IPv6 not supported - $ip"
       ((error_count++))
       continue
-    fi
-    
-    # Validate IPv4
-    if ! validate_ipv4 "$ip"; then
+    elif [ $validation_result -eq 1 ]; then
       log_error "Line $line_num: Invalid IP format - $ip"
       ((error_count++))
       continue
     fi
     
-    # Add to IPs array
-    ips_array=$(echo "$ips_array" | jq --arg ip "$ip" '. + [$ip]')
+    # Append to valid IPs (newline-separated)
+    valid_ips+="${ip}"$'\n'
     ((valid_count++))
     
-    log_debug "Line $line_num: $ip ($vendor_name)"
+    log_debug "Line $line_num: $ip"
     
-  done < "$csv_file"
+  done <<< "$extracted_ips"
   
   log_info "Parsed $valid_count valid IPs ($error_count errors)"
   
@@ -800,7 +1054,12 @@ parse_csv() {
     log_warn "Some IPs had validation errors. Review the errors above."
   fi
   
-  echo "$ips_array"
+  # Convert to JSON array in a single jq call (fast!)
+  if [ -n "$valid_ips" ]; then
+    printf '%s' "$valid_ips" | jq -R -s 'split("\n") | map(select(length > 0))'
+  else
+    echo "[]"
+  fi
 }
 
 # =============================================================================
@@ -828,16 +1087,45 @@ cmd_apply() {
     exit 1
   fi
   
-  # Check for IP limit
+  # Check for IP limit and offer optimization
+  local needs_chunking=false
+  local rules_needed=1
+  
   if [ "$ip_count" -gt "$MAX_IPS_PER_CONDITION" ]; then
-    log_warn "IP count ($ip_count) exceeds recommended limit ($MAX_IPS_PER_CONDITION per condition)"
-    log_warn "Vercel may have limits on IPs per condition. Consider splitting into multiple rules."
+    log_warn "IP count ($ip_count) exceeds limit ($MAX_IPS_PER_CONDITION per rule)"
+    echo ""
+    
+    # Offer CIDR optimization
+    if [ "${SKIP_OPTIMIZE:-false}" != "true" ]; then
+      log_info "Attempting CIDR optimization to reduce IP count..."
+      local optimized_json
+      optimized_json=$(optimize_ip_list "$ips_json")
+      local optimized_count
+      optimized_count=$(echo "$optimized_json" | jq 'length')
+      
+      if [ "$optimized_count" -lt "$ip_count" ]; then
+        local reduction=$((ip_count - optimized_count))
+        log_info "CIDR optimization reduced entries from $ip_count to $optimized_count (-$reduction)"
+        ips_json="$optimized_json"
+        ip_count="$optimized_count"
+      else
+        log_info "No CIDR optimization possible (IPs are not contiguous)"
+      fi
+    fi
+    
+    # Check if we still need chunking
+    if [ "$ip_count" -gt "$MAX_IPS_PER_CONDITION" ]; then
+      needs_chunking=true
+      rules_needed=$(( (ip_count + MAX_IPS_PER_CONDITION - 1) / MAX_IPS_PER_CONDITION ))
+      log_warn "Will create $rules_needed separate rules (max $MAX_IPS_PER_CONDITION IPs each)"
+    fi
   fi
   
   echo ""
   log_info "Project ID: $project_id"
   [ -n "${TEAM_ID:-}" ] && log_info "Team ID: $TEAM_ID"
   log_info "IPs to allowlist: $ip_count"
+  [ "$needs_chunking" = true ] && log_info "Rules to create: $rules_needed"
   log_info "Hostname scope: ${RULE_HOSTNAME:-project-wide}"
   echo ""
   
@@ -852,7 +1140,11 @@ cmd_apply() {
     echo "  DRY RUN - No changes made"
     echo "=============================================="
     echo ""
-    echo "Would create/update allowlist rule with $ip_count IPs."
+    if [ "$needs_chunking" = true ]; then
+      echo "Would create $rules_needed allowlist rules with $ip_count total IPs."
+    else
+      echo "Would create/update allowlist rule with $ip_count IPs."
+    fi
     echo "All traffic from IPs NOT in this list will be BLOCKED."
     echo ""
     echo "To apply changes, run without DRY_RUN=true"
@@ -870,24 +1162,27 @@ cmd_apply() {
   
   log_debug "Firewall config response: $(echo "$config" | jq -c '.' 2>/dev/null || echo "$config")"
   
-  # Check for existing rules and clean up duplicates
+  # Check for existing rules and clean up
   local all_rules
   all_rules=$(find_allowlist_rules "$config")
-  local rule_count
-  rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
+  local existing_rule_count
+  existing_rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
   
-  log_debug "Found $rule_count existing rule(s) with our name"
+  log_debug "Found $existing_rule_count existing rule(s) with our name"
   
   local action="insert"
   local existing_rule_id=""
   
-  if [ "$rule_count" -gt 1 ]; then
-    # Multiple rules found - clean up duplicates
-    log_warn "Found $rule_count duplicate rules. Will clean up and create fresh rule."
-    cleanup_duplicate_rules "$project_id" "$config"
+  # For multi-rule scenarios, always clean up and recreate
+  if [ "$needs_chunking" = true ] && [ "$existing_rule_count" -gt 0 ]; then
+    log_info "Found $existing_rule_count existing rule(s). Will remove and recreate with new chunking."
     action="insert"
-  elif [ "$rule_count" -eq 1 ]; then
-    # Single rule found - update it
+  elif [ "$existing_rule_count" -gt 1 ]; then
+    # Multiple rules found - clean up duplicates
+    log_warn "Found $existing_rule_count duplicate rules. Will clean up and create fresh rule."
+    action="insert"
+  elif [ "$existing_rule_count" -eq 1 ] && [ "$needs_chunking" = false ]; then
+    # Single rule found and we only need one - update it
     local existing_rule
     existing_rule=$(echo "$all_rules" | jq -c '.[0]')
     existing_rule_id=$(echo "$existing_rule" | jq -r '.id')
@@ -898,7 +1193,7 @@ cmd_apply() {
     log_info "Current IP count: $existing_ip_count"
     action="update"
   else
-    log_info "No existing allowlist rule found. Will create new rule."
+    log_info "No existing allowlist rule found. Will create new rule(s)."
   fi
   
   # Confirm
@@ -907,7 +1202,12 @@ cmd_apply() {
   echo "  WARNING"
   echo "=============================================="
   echo ""
-  if [ "$action" = "update" ]; then
+  if [ "$needs_chunking" = true ]; then
+    echo "This will CREATE $rules_needed allowlist rules."
+    if [ "$existing_rule_count" -gt 0 ]; then
+      echo "Existing rules will be REMOVED first."
+    fi
+  elif [ "$action" = "update" ]; then
     echo "This will UPDATE the existing allowlist rule."
   else
     echo "This will CREATE a new allowlist rule."
@@ -924,23 +1224,100 @@ cmd_apply() {
     exit 1
   fi
   
-  # Apply the rule
-  log_info "Applying allowlist rule..."
+  # Apply the rule(s)
+  log_info "Applying allowlist rule(s)..."
   
-  if update_allowlist_rule "$project_id" "$ips_json" "$action" "$existing_rule_id"; then
-    echo ""
-    echo "=============================================="
-    echo "  SUCCESS"
-    echo "=============================================="
-    echo ""
-    log_info "Allowlist rule ${action}ed successfully!"
-    log_info "Whitelisted IPs: $ip_count"
-    log_info "All other traffic will be BLOCKED."
-    audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')" "ip_count=$ip_count"
+  if [ "$needs_chunking" = true ]; then
+    # Remove existing rules first (can be skipped with SKIP_REMOVAL=true)
+    local removal_failures=0
+    if [ "$existing_rule_count" -gt 0 ]; then
+      if [ "${SKIP_REMOVAL:-false}" = "true" ]; then
+        log_warn "SKIP_REMOVAL=true - Skipping removal of $existing_rule_count existing rule(s)"
+        log_warn "You may have duplicate rules. Clean up manually in Vercel dashboard."
+      else
+        log_info "Removing $existing_rule_count existing rule(s)..."
+        for rule_id in $(echo "$all_rules" | jq -r '.[].id'); do
+          if remove_allowlist_rule "$project_id" "$rule_id" 3; then
+            log_info "Removed rule: $rule_id"
+          else
+            log_warn "Failed to remove rule: $rule_id (will continue anyway)"
+            ((removal_failures++))
+          fi
+          # Longer delay between removals to avoid rate limiting
+          sleep 2
+        done
+        
+        if [ "$removal_failures" -gt 0 ]; then
+          log_warn "$removal_failures rule(s) could not be removed. You may need to remove them manually via Vercel dashboard."
+          echo ""
+          read -p "Continue creating new rules anyway? (yes/no): " CONTINUE
+          if [ "$CONTINUE" != "yes" ]; then
+            echo "Aborted."
+            exit 1
+          fi
+        fi
+      fi
+    fi
+    
+    # Create chunked rules
+    local chunk_start=0
+    local chunk_num=1
+    local success_count=0
+    
+    while [ "$chunk_start" -lt "$ip_count" ]; do
+      local chunk_ips
+      chunk_ips=$(echo "$ips_json" | jq ".[$chunk_start:$((chunk_start + MAX_IPS_PER_CONDITION))]")
+      local chunk_size
+      chunk_size=$(echo "$chunk_ips" | jq 'length')
+      
+      log_info "Creating rule $chunk_num/$rules_needed ($chunk_size IPs)..."
+      
+      # Create rule with part number in name
+      local part_suffix=" (Part $chunk_num/$rules_needed)"
+      if update_allowlist_rule_with_name "$project_id" "$chunk_ips" "insert" "" "${RULE_NAME}${part_suffix}"; then
+        ((success_count++))
+        log_debug "Rule $chunk_num created successfully"
+      else
+        log_error "Failed to create rule $chunk_num"
+      fi
+      
+      chunk_start=$((chunk_start + MAX_IPS_PER_CONDITION))
+      ((chunk_num++))
+      rate_limit_sleep
+    done
+    
+    if [ "$success_count" -eq "$rules_needed" ]; then
+      echo ""
+      echo "=============================================="
+      echo "  SUCCESS"
+      echo "=============================================="
+      echo ""
+      log_info "Created $success_count allowlist rules successfully!"
+      log_info "Total whitelisted IPs: $ip_count"
+      log_info "All other traffic will be BLOCKED."
+      audit_log "ALLOWLIST_INSERT_CHUNKED" "ip_count=$ip_count rules=$success_count"
+    else
+      log_error "Only $success_count of $rules_needed rules were created"
+      audit_log "ALLOWLIST_INSERT_CHUNKED_PARTIAL" "ip_count=$ip_count rules_created=$success_count rules_needed=$rules_needed"
+      exit 1
+    fi
   else
-    log_error "Failed to $action allowlist rule"
-    audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')_FAILED" "ip_count=$ip_count"
-    exit 1
+    # Single rule
+    if update_allowlist_rule "$project_id" "$ips_json" "$action" "$existing_rule_id"; then
+      echo ""
+      echo "=============================================="
+      echo "  SUCCESS"
+      echo "=============================================="
+      echo ""
+      log_info "Allowlist rule ${action}ed successfully!"
+      log_info "Whitelisted IPs: $ip_count"
+      log_info "All other traffic will be BLOCKED."
+      audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')" "ip_count=$ip_count"
+    else
+      log_error "Failed to $action allowlist rule"
+      audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')_FAILED" "ip_count=$ip_count"
+      exit 1
+    fi
   fi
 }
 
@@ -1126,6 +1503,106 @@ cmd_backup() {
   audit_log "BACKUP_CREATED" "file=$backup_file"
 }
 
+cmd_optimize() {
+  local csv_file="$1"
+  local output_file="${2:-}"
+  
+  if [ ! -f "$csv_file" ]; then
+    log_error "CSV file not found: $csv_file"
+    exit 1
+  fi
+  
+  log_info "Analyzing IPs for CIDR optimization..."
+  echo ""
+  
+  # Parse CSV to get IPs
+  local ips_json
+  ips_json=$(parse_csv "$csv_file")
+  
+  local original_count
+  original_count=$(echo "$ips_json" | jq 'length')
+  
+  if [ "$original_count" -eq 0 ]; then
+    log_error "No valid IPs found in CSV"
+    exit 1
+  fi
+  
+  log_info "Original IP count: $original_count"
+  
+  # Optimize IPs to CIDRs
+  local optimized_json
+  optimized_json=$(optimize_ip_list "$ips_json")
+  
+  local optimized_count
+  optimized_count=$(echo "$optimized_json" | jq 'length')
+  
+  local reduction
+  reduction=$((original_count - optimized_count))
+  local reduction_pct
+  if [ "$original_count" -gt 0 ]; then
+    reduction_pct=$((reduction * 100 / original_count))
+  else
+    reduction_pct=0
+  fi
+  
+  echo ""
+  echo "=============================================="
+  echo "  CIDR Optimization Results"
+  echo "=============================================="
+  echo ""
+  echo "  Original entries:  $original_count"
+  echo "  Optimized entries: $optimized_count"
+  echo "  Reduction:         $reduction entries ($reduction_pct%)"
+  echo ""
+  
+  # Check if we're still over the limit
+  if [ "$optimized_count" -gt "$MAX_IPS_PER_CONDITION" ]; then
+    local rules_needed=$(( (optimized_count + MAX_IPS_PER_CONDITION - 1) / MAX_IPS_PER_CONDITION ))
+    log_warn "Still exceeds $MAX_IPS_PER_CONDITION per rule limit."
+    log_warn "Will need $rules_needed separate rules when applying."
+  else
+    log_info "Optimized list fits within $MAX_IPS_PER_CONDITION limit!"
+  fi
+  
+  echo ""
+  
+  # Show sample of optimized list
+  log_info "Optimized entries (first 20):"
+  echo "$optimized_json" | jq -r '.[0:20][]'
+  
+  local cidr_count
+  cidr_count=$(echo "$optimized_json" | jq '[.[] | select(contains("/"))] | length')
+  local single_count=$((optimized_count - cidr_count))
+  
+  echo ""
+  log_info "CIDR ranges: $cidr_count, Individual IPs: $single_count"
+  
+  # Output to file if specified
+  if [ -n "$output_file" ]; then
+    echo ""
+    log_info "Writing optimized list to: $output_file"
+    
+    # Write as CSV with comments
+    {
+      echo "# Optimized IP Allowlist"
+      echo "# Generated from: $csv_file"
+      echo "# Original: $original_count entries, Optimized: $optimized_count entries"
+      echo "# Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+      echo "#"
+      echo "# ip,vendor_name,notes"
+      echo "$optimized_json" | jq -r '.[]' | while read -r entry; do
+        echo "$entry,Optimized,Auto-aggregated CIDR"
+      done
+    } > "$output_file"
+    
+    log_info "Done! Use './vercel-ip-allowlist.sh apply $output_file' to apply."
+  else
+    echo ""
+    log_info "To save optimized list, run:"
+    echo "  $0 optimize $csv_file optimized-ips.csv"
+  fi
+}
+
 cmd_setup() {
   local project_dir="${1:-$(pwd)}"
   
@@ -1215,13 +1692,14 @@ DESCRIPTION:
   This is different from bypass rules which only skip WAF checks.
 
 USAGE:
-  $0 setup                Show environment setup instructions
-  $0 apply <csv_file>     Create/update allowlist rule with IPs from CSV
-  $0 show                 Show current allowlist configuration
-  $0 disable              Disable the allowlist rule (keeps config)
-  $0 remove               Remove the allowlist rule entirely
-  $0 backup               Export current firewall configuration
-  $0 --help               Show this help message
+  $0 setup                        Show environment setup instructions
+  $0 apply <csv_file>             Create/update allowlist rule with IPs from CSV
+  $0 optimize <csv_file> [output] Optimize IPs into CIDR ranges to reduce count
+  $0 show                         Show current allowlist configuration
+  $0 disable                      Disable the allowlist rule (keeps config)
+  $0 remove                       Remove the allowlist rule entirely
+  $0 backup                       Export current firewall configuration
+  $0 --help                       Show this help message
 
 OPTIONS:
   --projects-file <file>  File containing list of project IDs (one per line)
@@ -1308,6 +1786,17 @@ main() {
   # Setup command doesn't require token
   if [ "$command" = "setup" ]; then
     cmd_setup "$@"
+    exit 0
+  fi
+  
+  # Optimize command doesn't require token (local operation)
+  if [ "$command" = "optimize" ]; then
+    if [ -z "${1:-}" ]; then
+      log_error "CSV file required"
+      echo "Usage: $0 optimize <csv_file> [output_file.csv]"
+      exit 1
+    fi
+    cmd_optimize "$1" "${2:-}"
     exit 0
   fi
   
