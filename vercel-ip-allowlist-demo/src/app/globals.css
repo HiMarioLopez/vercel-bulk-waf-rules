@@ -1,26 +1,134 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafaf9;
+  --foreground: #000000;
+  --accent-allowed: #bfff00;
+  --accent-blocked: #ff4f4f;
+  --border-width: 3px;
+  --border: var(--border-width) solid #000;
+  --shadow: 4px 4px 0 #000;
+  --shadow-hover: 6px 6px 0 #000;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-allowed: var(--accent-allowed);
+  --color-blocked: var(--accent-blocked);
+  --font-mono: var(--font-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* Neobrutalist card styles */
+.card {
+  border: var(--border);
+  box-shadow: var(--shadow);
+  background: #fff;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* Button styles */
+.btn {
+  border: var(--border);
+  box-shadow: var(--shadow);
+  background: #fff;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.1s ease;
+  cursor: pointer;
+}
+
+.btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-allowed);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: var(--accent-allowed);
+}
+
+.btn-danger {
+  background: var(--accent-blocked);
+}
+
+/* Status indicator pulse */
+@keyframes pulse-allowed {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(191, 255, 0, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(191, 255, 0, 0);
+  }
+}
+
+@keyframes pulse-blocked {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 79, 79, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 79, 79, 0);
+  }
+}
+
+.pulse-allowed {
+  animation: pulse-allowed 2s infinite;
+}
+
+.pulse-blocked {
+  animation: pulse-blocked 2s infinite;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .card:hover,
+  .btn:hover,
+  .btn:active {
+    transform: none;
+  }
+
+  .pulse-allowed,
+  .pulse-blocked {
+    animation: none;
+  }
+}
+
+/* Tabular numbers for IP display */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Code block styling */
+.code-block {
+  border: var(--border);
+  background: #000;
+  color: var(--accent-allowed);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  overflow-x: auto;
 }
