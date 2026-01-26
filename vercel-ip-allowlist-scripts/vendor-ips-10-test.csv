@@ -1,0 +1,14 @@
+# Vendor IP Allowlist - 10 IP Test
+# Format: ip,vendor_name,notes
+# Testing to find upper bound on IP count
+
+10.0.0.1,Test Vendor,Test IP 1
+10.0.0.2,Test Vendor,Test IP 2
+10.0.0.3,Test Vendor,Test IP 3
+10.0.0.4,Test Vendor,Test IP 4
+10.0.0.5,Test Vendor,Test IP 5
+10.0.0.6,Test Vendor,Test IP 6
+10.0.0.7,Test Vendor,Test IP 7
+10.0.0.8,Test Vendor,Test IP 8
+10.0.0.9,Test Vendor,Test IP 9
+10.0.0.10,Test Vendor,Test IP 10
