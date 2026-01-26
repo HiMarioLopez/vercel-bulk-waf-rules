@@ -1,4 +1,4 @@
-# Vendor IP Allowlist Template
+# Vendor IP Allowlist - STRESS TEST (1,000 entries)
 # Format: ip,vendor_name,notes
 # 
 # Columns:
@@ -11,10 +11,1016 @@
 #   - Escape double quotes by doubling them: "" represents a literal "
 #   - Single quotes don't need escaping (they're regular characters)
 #
-# Examples:
-# 1.2.3.4,Acme Corp,Payment gateway
-# 5.6.7.0/24,"Acme, Inc",Vendor with comma in name
-# 10.20.30.40,Analytics Co,Tracking pixels
-# 192.168.1.100,"Company ""Quoted""",Name with double quotes
-# 203.0.113.50,Mario's Shop,Single quotes are fine unquoted
-73.166.152.212,"Mario's Computer",Development testing
+# This file contains 1,000 test IPs for stress testing
+
+# Individual IPs (entries 1-250)
+10.0.0.1,Test Vendor 001,API endpoint
+10.0.0.2,Test Vendor 002,API endpoint
+10.0.0.3,Test Vendor 003,API endpoint
+10.0.0.4,Test Vendor 004,API endpoint
+10.0.0.5,Test Vendor 005,API endpoint
+10.0.0.6,Test Vendor 006,API endpoint
+10.0.0.7,Test Vendor 007,API endpoint
+10.0.0.8,Test Vendor 008,API endpoint
+10.0.0.9,Test Vendor 009,API endpoint
+10.0.0.10,Test Vendor 010,API endpoint
+10.0.0.11,Test Vendor 011,API endpoint
+10.0.0.12,Test Vendor 012,API endpoint
+10.0.0.13,Test Vendor 013,API endpoint
+10.0.0.14,Test Vendor 014,API endpoint
+10.0.0.15,Test Vendor 015,API endpoint
+10.0.0.16,Test Vendor 016,API endpoint
+10.0.0.17,Test Vendor 017,API endpoint
+10.0.0.18,Test Vendor 018,API endpoint
+10.0.0.19,Test Vendor 019,API endpoint
+10.0.0.20,Test Vendor 020,API endpoint
+10.0.0.21,Test Vendor 021,API endpoint
+10.0.0.22,Test Vendor 022,API endpoint
+10.0.0.23,Test Vendor 023,API endpoint
+10.0.0.24,Test Vendor 024,API endpoint
+10.0.0.25,Test Vendor 025,API endpoint
+10.0.0.26,Test Vendor 026,API endpoint
+10.0.0.27,Test Vendor 027,API endpoint
+10.0.0.28,Test Vendor 028,API endpoint
+10.0.0.29,Test Vendor 029,API endpoint
+10.0.0.30,Test Vendor 030,API endpoint
+10.0.0.31,Test Vendor 031,API endpoint
+10.0.0.32,Test Vendor 032,API endpoint
+10.0.0.33,Test Vendor 033,API endpoint
+10.0.0.34,Test Vendor 034,API endpoint
+10.0.0.35,Test Vendor 035,API endpoint
+10.0.0.36,Test Vendor 036,API endpoint
+10.0.0.37,Test Vendor 037,API endpoint
+10.0.0.38,Test Vendor 038,API endpoint
+10.0.0.39,Test Vendor 039,API endpoint
+10.0.0.40,Test Vendor 040,API endpoint
+10.0.0.41,Test Vendor 041,API endpoint
+10.0.0.42,Test Vendor 042,API endpoint
+10.0.0.43,Test Vendor 043,API endpoint
+10.0.0.44,Test Vendor 044,API endpoint
+10.0.0.45,Test Vendor 045,API endpoint
+10.0.0.46,Test Vendor 046,API endpoint
+10.0.0.47,Test Vendor 047,API endpoint
+10.0.0.48,Test Vendor 048,API endpoint
+10.0.0.49,Test Vendor 049,API endpoint
+10.0.0.50,Test Vendor 050,API endpoint
+10.0.1.1,Acme Corp 001,Payment gateway
+10.0.1.2,Acme Corp 002,Payment gateway
+10.0.1.3,Acme Corp 003,Payment gateway
+10.0.1.4,Acme Corp 004,Payment gateway
+10.0.1.5,Acme Corp 005,Payment gateway
+10.0.1.6,Acme Corp 006,Payment gateway
+10.0.1.7,Acme Corp 007,Payment gateway
+10.0.1.8,Acme Corp 008,Payment gateway
+10.0.1.9,Acme Corp 009,Payment gateway
+10.0.1.10,Acme Corp 010,Payment gateway
+10.0.1.11,Acme Corp 011,Payment gateway
+10.0.1.12,Acme Corp 012,Payment gateway
+10.0.1.13,Acme Corp 013,Payment gateway
+10.0.1.14,Acme Corp 014,Payment gateway
+10.0.1.15,Acme Corp 015,Payment gateway
+10.0.1.16,Acme Corp 016,Payment gateway
+10.0.1.17,Acme Corp 017,Payment gateway
+10.0.1.18,Acme Corp 018,Payment gateway
+10.0.1.19,Acme Corp 019,Payment gateway
+10.0.1.20,Acme Corp 020,Payment gateway
+10.0.1.21,Acme Corp 021,Payment gateway
+10.0.1.22,Acme Corp 022,Payment gateway
+10.0.1.23,Acme Corp 023,Payment gateway
+10.0.1.24,Acme Corp 024,Payment gateway
+10.0.1.25,Acme Corp 025,Payment gateway
+10.0.1.26,Acme Corp 026,Payment gateway
+10.0.1.27,Acme Corp 027,Payment gateway
+10.0.1.28,Acme Corp 028,Payment gateway
+10.0.1.29,Acme Corp 029,Payment gateway
+10.0.1.30,Acme Corp 030,Payment gateway
+10.0.1.31,Acme Corp 031,Payment gateway
+10.0.1.32,Acme Corp 032,Payment gateway
+10.0.1.33,Acme Corp 033,Payment gateway
+10.0.1.34,Acme Corp 034,Payment gateway
+10.0.1.35,Acme Corp 035,Payment gateway
+10.0.1.36,Acme Corp 036,Payment gateway
+10.0.1.37,Acme Corp 037,Payment gateway
+10.0.1.38,Acme Corp 038,Payment gateway
+10.0.1.39,Acme Corp 039,Payment gateway
+10.0.1.40,Acme Corp 040,Payment gateway
+10.0.1.41,Acme Corp 041,Payment gateway
+10.0.1.42,Acme Corp 042,Payment gateway
+10.0.1.43,Acme Corp 043,Payment gateway
+10.0.1.44,Acme Corp 044,Payment gateway
+10.0.1.45,Acme Corp 045,Payment gateway
+10.0.1.46,Acme Corp 046,Payment gateway
+10.0.1.47,Acme Corp 047,Payment gateway
+10.0.1.48,Acme Corp 048,Payment gateway
+10.0.1.49,Acme Corp 049,Payment gateway
+10.0.1.50,Acme Corp 050,Payment gateway
+192.0.2.1,Analytics Provider 001,Tracking service
+192.0.2.2,Analytics Provider 002,Tracking service
+192.0.2.3,Analytics Provider 003,Tracking service
+192.0.2.4,Analytics Provider 004,Tracking service
+192.0.2.5,Analytics Provider 005,Tracking service
+192.0.2.6,Analytics Provider 006,Tracking service
+192.0.2.7,Analytics Provider 007,Tracking service
+192.0.2.8,Analytics Provider 008,Tracking service
+192.0.2.9,Analytics Provider 009,Tracking service
+192.0.2.10,Analytics Provider 010,Tracking service
+192.0.2.11,Analytics Provider 011,Tracking service
+192.0.2.12,Analytics Provider 012,Tracking service
+192.0.2.13,Analytics Provider 013,Tracking service
+192.0.2.14,Analytics Provider 014,Tracking service
+192.0.2.15,Analytics Provider 015,Tracking service
+192.0.2.16,Analytics Provider 016,Tracking service
+192.0.2.17,Analytics Provider 017,Tracking service
+192.0.2.18,Analytics Provider 018,Tracking service
+192.0.2.19,Analytics Provider 019,Tracking service
+192.0.2.20,Analytics Provider 020,Tracking service
+192.0.2.21,Analytics Provider 021,Tracking service
+192.0.2.22,Analytics Provider 022,Tracking service
+192.0.2.23,Analytics Provider 023,Tracking service
+192.0.2.24,Analytics Provider 024,Tracking service
+192.0.2.25,Analytics Provider 025,Tracking service
+192.0.2.26,Analytics Provider 026,Tracking service
+192.0.2.27,Analytics Provider 027,Tracking service
+192.0.2.28,Analytics Provider 028,Tracking service
+192.0.2.29,Analytics Provider 029,Tracking service
+192.0.2.30,Analytics Provider 030,Tracking service
+192.0.2.31,Analytics Provider 031,Tracking service
+192.0.2.32,Analytics Provider 032,Tracking service
+192.0.2.33,Analytics Provider 033,Tracking service
+192.0.2.34,Analytics Provider 034,Tracking service
+192.0.2.35,Analytics Provider 035,Tracking service
+192.0.2.36,Analytics Provider 036,Tracking service
+192.0.2.37,Analytics Provider 037,Tracking service
+192.0.2.38,Analytics Provider 038,Tracking service
+192.0.2.39,Analytics Provider 039,Tracking service
+192.0.2.40,Analytics Provider 040,Tracking service
+192.0.2.41,Analytics Provider 041,Tracking service
+192.0.2.42,Analytics Provider 042,Tracking service
+192.0.2.43,Analytics Provider 043,Tracking service
+192.0.2.44,Analytics Provider 044,Tracking service
+192.0.2.45,Analytics Provider 045,Tracking service
+192.0.2.46,Analytics Provider 046,Tracking service
+192.0.2.47,Analytics Provider 047,Tracking service
+192.0.2.48,Analytics Provider 048,Tracking service
+192.0.2.49,Analytics Provider 049,Tracking service
+192.0.2.50,Analytics Provider 050,Tracking service
+198.51.100.1,CDN Node 001,Edge server
+198.51.100.2,CDN Node 002,Edge server
+198.51.100.3,CDN Node 003,Edge server
+198.51.100.4,CDN Node 004,Edge server
+198.51.100.5,CDN Node 005,Edge server
+198.51.100.6,CDN Node 006,Edge server
+198.51.100.7,CDN Node 007,Edge server
+198.51.100.8,CDN Node 008,Edge server
+198.51.100.9,CDN Node 009,Edge server
+198.51.100.10,CDN Node 010,Edge server
+198.51.100.11,CDN Node 011,Edge server
+198.51.100.12,CDN Node 012,Edge server
+198.51.100.13,CDN Node 013,Edge server
+198.51.100.14,CDN Node 014,Edge server
+198.51.100.15,CDN Node 015,Edge server
+198.51.100.16,CDN Node 016,Edge server
+198.51.100.17,CDN Node 017,Edge server
+198.51.100.18,CDN Node 018,Edge server
+198.51.100.19,CDN Node 019,Edge server
+198.51.100.20,CDN Node 020,Edge server
+198.51.100.21,CDN Node 021,Edge server
+198.51.100.22,CDN Node 022,Edge server
+198.51.100.23,CDN Node 023,Edge server
+198.51.100.24,CDN Node 024,Edge server
+198.51.100.25,CDN Node 025,Edge server
+198.51.100.26,CDN Node 026,Edge server
+198.51.100.27,CDN Node 027,Edge server
+198.51.100.28,CDN Node 028,Edge server
+198.51.100.29,CDN Node 029,Edge server
+198.51.100.30,CDN Node 030,Edge server
+198.51.100.31,CDN Node 031,Edge server
+198.51.100.32,CDN Node 032,Edge server
+198.51.100.33,CDN Node 033,Edge server
+198.51.100.34,CDN Node 034,Edge server
+198.51.100.35,CDN Node 035,Edge server
+198.51.100.36,CDN Node 036,Edge server
+198.51.100.37,CDN Node 037,Edge server
+198.51.100.38,CDN Node 038,Edge server
+198.51.100.39,CDN Node 039,Edge server
+198.51.100.40,CDN Node 040,Edge server
+198.51.100.41,CDN Node 041,Edge server
+198.51.100.42,CDN Node 042,Edge server
+198.51.100.43,CDN Node 043,Edge server
+198.51.100.44,CDN Node 044,Edge server
+198.51.100.45,CDN Node 045,Edge server
+198.51.100.46,CDN Node 046,Edge server
+198.51.100.47,CDN Node 047,Edge server
+198.51.100.48,CDN Node 048,Edge server
+198.51.100.49,CDN Node 049,Edge server
+198.51.100.50,CDN Node 050,Edge server
+203.0.113.1,Webhook Service 001,Inbound webhooks
+203.0.113.2,Webhook Service 002,Inbound webhooks
+203.0.113.3,Webhook Service 003,Inbound webhooks
+203.0.113.4,Webhook Service 004,Inbound webhooks
+203.0.113.5,Webhook Service 005,Inbound webhooks
+203.0.113.6,Webhook Service 006,Inbound webhooks
+203.0.113.7,Webhook Service 007,Inbound webhooks
+203.0.113.8,Webhook Service 008,Inbound webhooks
+203.0.113.9,Webhook Service 009,Inbound webhooks
+203.0.113.10,Webhook Service 010,Inbound webhooks
+203.0.113.11,Webhook Service 011,Inbound webhooks
+203.0.113.12,Webhook Service 012,Inbound webhooks
+203.0.113.13,Webhook Service 013,Inbound webhooks
+203.0.113.14,Webhook Service 014,Inbound webhooks
+203.0.113.15,Webhook Service 015,Inbound webhooks
+203.0.113.16,Webhook Service 016,Inbound webhooks
+203.0.113.17,Webhook Service 017,Inbound webhooks
+203.0.113.18,Webhook Service 018,Inbound webhooks
+203.0.113.19,Webhook Service 019,Inbound webhooks
+203.0.113.20,Webhook Service 020,Inbound webhooks
+203.0.113.21,Webhook Service 021,Inbound webhooks
+203.0.113.22,Webhook Service 022,Inbound webhooks
+203.0.113.23,Webhook Service 023,Inbound webhooks
+203.0.113.24,Webhook Service 024,Inbound webhooks
+203.0.113.25,Webhook Service 025,Inbound webhooks
+203.0.113.26,Webhook Service 026,Inbound webhooks
+203.0.113.27,Webhook Service 027,Inbound webhooks
+203.0.113.28,Webhook Service 028,Inbound webhooks
+203.0.113.29,Webhook Service 029,Inbound webhooks
+203.0.113.30,Webhook Service 030,Inbound webhooks
+203.0.113.31,Webhook Service 031,Inbound webhooks
+203.0.113.32,Webhook Service 032,Inbound webhooks
+203.0.113.33,Webhook Service 033,Inbound webhooks
+203.0.113.34,Webhook Service 034,Inbound webhooks
+203.0.113.35,Webhook Service 035,Inbound webhooks
+203.0.113.36,Webhook Service 036,Inbound webhooks
+203.0.113.37,Webhook Service 037,Inbound webhooks
+203.0.113.38,Webhook Service 038,Inbound webhooks
+203.0.113.39,Webhook Service 039,Inbound webhooks
+203.0.113.40,Webhook Service 040,Inbound webhooks
+203.0.113.41,Webhook Service 041,Inbound webhooks
+203.0.113.42,Webhook Service 042,Inbound webhooks
+203.0.113.43,Webhook Service 043,Inbound webhooks
+203.0.113.44,Webhook Service 044,Inbound webhooks
+203.0.113.45,Webhook Service 045,Inbound webhooks
+203.0.113.46,Webhook Service 046,Inbound webhooks
+203.0.113.47,Webhook Service 047,Inbound webhooks
+203.0.113.48,Webhook Service 048,Inbound webhooks
+203.0.113.49,Webhook Service 049,Inbound webhooks
+203.0.113.50,Webhook Service 050,Inbound webhooks
+
+# Special character tests (entries 251-300)
+172.16.0.1,"Vendor, With Comma 001",Comma in name
+172.16.0.2,"Vendor, With Comma 002",Comma in name
+172.16.0.3,"Vendor, With Comma 003",Comma in name
+172.16.0.4,"Vendor, With Comma 004",Comma in name
+172.16.0.5,"Vendor, With Comma 005",Comma in name
+172.16.0.6,"Vendor, With Comma 006",Comma in name
+172.16.0.7,"Vendor, With Comma 007",Comma in name
+172.16.0.8,"Vendor, With Comma 008",Comma in name
+172.16.0.9,"Vendor, With Comma 009",Comma in name
+172.16.0.10,"Vendor, With Comma 010",Comma in name
+172.16.0.11,"Company ""Quoted"" 001",Double quotes in name
+172.16.0.12,"Company ""Quoted"" 002",Double quotes in name
+172.16.0.13,"Company ""Quoted"" 003",Double quotes in name
+172.16.0.14,"Company ""Quoted"" 004",Double quotes in name
+172.16.0.15,"Company ""Quoted"" 005",Double quotes in name
+172.16.0.16,"Company ""Quoted"" 006",Double quotes in name
+172.16.0.17,"Company ""Quoted"" 007",Double quotes in name
+172.16.0.18,"Company ""Quoted"" 008",Double quotes in name
+172.16.0.19,"Company ""Quoted"" 009",Double quotes in name
+172.16.0.20,"Company ""Quoted"" 010",Double quotes in name
+172.16.0.21,Mario's Shop 001,Single quote in name
+172.16.0.22,Mario's Shop 002,Single quote in name
+172.16.0.23,Mario's Shop 003,Single quote in name
+172.16.0.24,Mario's Shop 004,Single quote in name
+172.16.0.25,Mario's Shop 005,Single quote in name
+172.16.0.26,Mario's Shop 006,Single quote in name
+172.16.0.27,Mario's Shop 007,Single quote in name
+172.16.0.28,Mario's Shop 008,Single quote in name
+172.16.0.29,Mario's Shop 009,Single quote in name
+172.16.0.30,Mario's Shop 010,Single quote in name
+172.16.0.31,"Complex, ""Name"" Here 001",Both comma and quotes
+172.16.0.32,"Complex, ""Name"" Here 002",Both comma and quotes
+172.16.0.33,"Complex, ""Name"" Here 003",Both comma and quotes
+172.16.0.34,"Complex, ""Name"" Here 004",Both comma and quotes
+172.16.0.35,"Complex, ""Name"" Here 005",Both comma and quotes
+172.16.0.36,"Complex, ""Name"" Here 006",Both comma and quotes
+172.16.0.37,"Complex, ""Name"" Here 007",Both comma and quotes
+172.16.0.38,"Complex, ""Name"" Here 008",Both comma and quotes
+172.16.0.39,"Complex, ""Name"" Here 009",Both comma and quotes
+172.16.0.40,"Complex, ""Name"" Here 010",Both comma and quotes
+172.16.0.41,O'Brien & Associates 001,Apostrophe and ampersand
+172.16.0.42,O'Brien & Associates 002,Apostrophe and ampersand
+172.16.0.43,O'Brien & Associates 003,Apostrophe and ampersand
+172.16.0.44,O'Brien & Associates 004,Apostrophe and ampersand
+172.16.0.45,O'Brien & Associates 005,Apostrophe and ampersand
+172.16.0.46,O'Brien & Associates 006,Apostrophe and ampersand
+172.16.0.47,O'Brien & Associates 007,Apostrophe and ampersand
+172.16.0.48,O'Brien & Associates 008,Apostrophe and ampersand
+172.16.0.49,O'Brien & Associates 009,Apostrophe and ampersand
+172.16.0.50,O'Brien & Associates 010,Apostrophe and ampersand
+
+# CIDR ranges (entries 301-450)
+10.10.0.0/24,CIDR Network 001,Full /24 block
+10.10.1.0/24,CIDR Network 002,Full /24 block
+10.10.2.0/24,CIDR Network 003,Full /24 block
+10.10.3.0/24,CIDR Network 004,Full /24 block
+10.10.4.0/24,CIDR Network 005,Full /24 block
+10.10.5.0/24,CIDR Network 006,Full /24 block
+10.10.6.0/24,CIDR Network 007,Full /24 block
+10.10.7.0/24,CIDR Network 008,Full /24 block
+10.10.8.0/24,CIDR Network 009,Full /24 block
+10.10.9.0/24,CIDR Network 010,Full /24 block
+10.10.10.0/24,CIDR Network 011,Full /24 block
+10.10.11.0/24,CIDR Network 012,Full /24 block
+10.10.12.0/24,CIDR Network 013,Full /24 block
+10.10.13.0/24,CIDR Network 014,Full /24 block
+10.10.14.0/24,CIDR Network 015,Full /24 block
+10.10.15.0/24,CIDR Network 016,Full /24 block
+10.10.16.0/24,CIDR Network 017,Full /24 block
+10.10.17.0/24,CIDR Network 018,Full /24 block
+10.10.18.0/24,CIDR Network 019,Full /24 block
+10.10.19.0/24,CIDR Network 020,Full /24 block
+10.10.20.0/24,CIDR Network 021,Full /24 block
+10.10.21.0/24,CIDR Network 022,Full /24 block
+10.10.22.0/24,CIDR Network 023,Full /24 block
+10.10.23.0/24,CIDR Network 024,Full /24 block
+10.10.24.0/24,CIDR Network 025,Full /24 block
+10.10.25.0/24,CIDR Network 026,Full /24 block
+10.10.26.0/24,CIDR Network 027,Full /24 block
+10.10.27.0/24,CIDR Network 028,Full /24 block
+10.10.28.0/24,CIDR Network 029,Full /24 block
+10.10.29.0/24,CIDR Network 030,Full /24 block
+10.11.0.0/28,Small Block 001,/28 subnet
+10.11.0.16/28,Small Block 002,/28 subnet
+10.11.0.32/28,Small Block 003,/28 subnet
+10.11.0.48/28,Small Block 004,/28 subnet
+10.11.0.64/28,Small Block 005,/28 subnet
+10.11.0.80/28,Small Block 006,/28 subnet
+10.11.0.96/28,Small Block 007,/28 subnet
+10.11.0.112/28,Small Block 008,/28 subnet
+10.11.0.128/28,Small Block 009,/28 subnet
+10.11.0.144/28,Small Block 010,/28 subnet
+10.11.0.160/28,Small Block 011,/28 subnet
+10.11.0.176/28,Small Block 012,/28 subnet
+10.11.0.192/28,Small Block 013,/28 subnet
+10.11.0.208/28,Small Block 014,/28 subnet
+10.11.0.224/28,Small Block 015,/28 subnet
+10.11.0.240/28,Small Block 016,/28 subnet
+10.11.1.0/28,Small Block 017,/28 subnet
+10.11.1.16/28,Small Block 018,/28 subnet
+10.11.1.32/28,Small Block 019,/28 subnet
+10.11.1.48/28,Small Block 020,/28 subnet
+10.12.0.0/30,Tiny Block 001,/30 subnet
+10.12.0.4/30,Tiny Block 002,/30 subnet
+10.12.0.8/30,Tiny Block 003,/30 subnet
+10.12.0.12/30,Tiny Block 004,/30 subnet
+10.12.0.16/30,Tiny Block 005,/30 subnet
+10.12.0.20/30,Tiny Block 006,/30 subnet
+10.12.0.24/30,Tiny Block 007,/30 subnet
+10.12.0.28/30,Tiny Block 008,/30 subnet
+10.12.0.32/30,Tiny Block 009,/30 subnet
+10.12.0.36/30,Tiny Block 010,/30 subnet
+10.12.0.40/30,Tiny Block 011,/30 subnet
+10.12.0.44/30,Tiny Block 012,/30 subnet
+10.12.0.48/30,Tiny Block 013,/30 subnet
+10.12.0.52/30,Tiny Block 014,/30 subnet
+10.12.0.56/30,Tiny Block 015,/30 subnet
+10.12.0.60/30,Tiny Block 016,/30 subnet
+10.12.0.64/30,Tiny Block 017,/30 subnet
+10.12.0.68/30,Tiny Block 018,/30 subnet
+10.12.0.72/30,Tiny Block 019,/30 subnet
+10.12.0.76/30,Tiny Block 020,/30 subnet
+10.13.0.1/32,Single Host 001,Host route
+10.13.0.2/32,Single Host 002,Host route
+10.13.0.3/32,Single Host 003,Host route
+10.13.0.4/32,Single Host 004,Host route
+10.13.0.5/32,Single Host 005,Host route
+10.13.0.6/32,Single Host 006,Host route
+10.13.0.7/32,Single Host 007,Host route
+10.13.0.8/32,Single Host 008,Host route
+10.13.0.9/32,Single Host 009,Host route
+10.13.0.10/32,Single Host 010,Host route
+10.13.0.11/32,Single Host 011,Host route
+10.13.0.12/32,Single Host 012,Host route
+10.13.0.13/32,Single Host 013,Host route
+10.13.0.14/32,Single Host 014,Host route
+10.13.0.15/32,Single Host 015,Host route
+10.13.0.16/32,Single Host 016,Host route
+10.13.0.17/32,Single Host 017,Host route
+10.13.0.18/32,Single Host 018,Host route
+10.13.0.19/32,Single Host 019,Host route
+10.13.0.20/32,Single Host 020,Host route
+10.14.0.0/23,Medium Block 001,/23 subnet
+10.14.2.0/23,Medium Block 002,/23 subnet
+10.14.4.0/23,Medium Block 003,/23 subnet
+10.14.6.0/23,Medium Block 004,/23 subnet
+10.14.8.0/23,Medium Block 005,/23 subnet
+10.14.10.0/23,Medium Block 006,/23 subnet
+10.14.12.0/23,Medium Block 007,/23 subnet
+10.14.14.0/23,Medium Block 008,/23 subnet
+10.14.16.0/23,Medium Block 009,/23 subnet
+10.14.18.0/23,Medium Block 010,/23 subnet
+10.14.20.0/23,Medium Block 011,/23 subnet
+10.14.22.0/23,Medium Block 012,/23 subnet
+10.14.24.0/23,Medium Block 013,/23 subnet
+10.14.26.0/23,Medium Block 014,/23 subnet
+10.14.28.0/23,Medium Block 015,/23 subnet
+10.14.30.0/23,Medium Block 016,/23 subnet
+10.14.32.0/23,Medium Block 017,/23 subnet
+10.14.34.0/23,Medium Block 018,/23 subnet
+10.14.36.0/23,Medium Block 019,/23 subnet
+10.14.38.0/23,Medium Block 020,/23 subnet
+10.15.0.0/22,Large Block 001,/22 subnet
+10.15.4.0/22,Large Block 002,/22 subnet
+10.15.8.0/22,Large Block 003,/22 subnet
+10.15.12.0/22,Large Block 004,/22 subnet
+10.15.16.0/22,Large Block 005,/22 subnet
+10.15.20.0/22,Large Block 006,/22 subnet
+10.15.24.0/22,Large Block 007,/22 subnet
+10.15.28.0/22,Large Block 008,/22 subnet
+10.15.32.0/22,Large Block 009,/22 subnet
+10.15.36.0/22,Large Block 010,/22 subnet
+10.15.40.0/22,Large Block 011,/22 subnet
+10.15.44.0/22,Large Block 012,/22 subnet
+10.15.48.0/22,Large Block 013,/22 subnet
+10.15.52.0/22,Large Block 014,/22 subnet
+10.15.56.0/22,Large Block 015,/22 subnet
+10.15.60.0/22,Large Block 016,/22 subnet
+10.15.64.0/22,Large Block 017,/22 subnet
+10.15.68.0/22,Large Block 018,/22 subnet
+10.15.72.0/22,Large Block 019,/22 subnet
+10.15.76.0/22,Large Block 020,/22 subnet
+10.16.0.0/20,XL Block 001,/20 subnet
+10.16.16.0/20,XL Block 002,/20 subnet
+10.16.32.0/20,XL Block 003,/20 subnet
+10.16.48.0/20,XL Block 004,/20 subnet
+10.16.64.0/20,XL Block 005,/20 subnet
+10.16.80.0/20,XL Block 006,/20 subnet
+10.16.96.0/20,XL Block 007,/20 subnet
+10.16.112.0/20,XL Block 008,/20 subnet
+10.16.128.0/20,XL Block 009,/20 subnet
+10.16.144.0/20,XL Block 010,/20 subnet
+
+# More individual IPs (entries 451-700)
+172.20.0.1,Cloud Provider 001,Infrastructure
+172.20.0.2,Cloud Provider 002,Infrastructure
+172.20.0.3,Cloud Provider 003,Infrastructure
+172.20.0.4,Cloud Provider 004,Infrastructure
+172.20.0.5,Cloud Provider 005,Infrastructure
+172.20.0.6,Cloud Provider 006,Infrastructure
+172.20.0.7,Cloud Provider 007,Infrastructure
+172.20.0.8,Cloud Provider 008,Infrastructure
+172.20.0.9,Cloud Provider 009,Infrastructure
+172.20.0.10,Cloud Provider 010,Infrastructure
+172.20.0.11,Cloud Provider 011,Infrastructure
+172.20.0.12,Cloud Provider 012,Infrastructure
+172.20.0.13,Cloud Provider 013,Infrastructure
+172.20.0.14,Cloud Provider 014,Infrastructure
+172.20.0.15,Cloud Provider 015,Infrastructure
+172.20.0.16,Cloud Provider 016,Infrastructure
+172.20.0.17,Cloud Provider 017,Infrastructure
+172.20.0.18,Cloud Provider 018,Infrastructure
+172.20.0.19,Cloud Provider 019,Infrastructure
+172.20.0.20,Cloud Provider 020,Infrastructure
+172.20.0.21,Cloud Provider 021,Infrastructure
+172.20.0.22,Cloud Provider 022,Infrastructure
+172.20.0.23,Cloud Provider 023,Infrastructure
+172.20.0.24,Cloud Provider 024,Infrastructure
+172.20.0.25,Cloud Provider 025,Infrastructure
+172.20.0.26,Cloud Provider 026,Infrastructure
+172.20.0.27,Cloud Provider 027,Infrastructure
+172.20.0.28,Cloud Provider 028,Infrastructure
+172.20.0.29,Cloud Provider 029,Infrastructure
+172.20.0.30,Cloud Provider 030,Infrastructure
+172.20.0.31,Cloud Provider 031,Infrastructure
+172.20.0.32,Cloud Provider 032,Infrastructure
+172.20.0.33,Cloud Provider 033,Infrastructure
+172.20.0.34,Cloud Provider 034,Infrastructure
+172.20.0.35,Cloud Provider 035,Infrastructure
+172.20.0.36,Cloud Provider 036,Infrastructure
+172.20.0.37,Cloud Provider 037,Infrastructure
+172.20.0.38,Cloud Provider 038,Infrastructure
+172.20.0.39,Cloud Provider 039,Infrastructure
+172.20.0.40,Cloud Provider 040,Infrastructure
+172.20.0.41,Cloud Provider 041,Infrastructure
+172.20.0.42,Cloud Provider 042,Infrastructure
+172.20.0.43,Cloud Provider 043,Infrastructure
+172.20.0.44,Cloud Provider 044,Infrastructure
+172.20.0.45,Cloud Provider 045,Infrastructure
+172.20.0.46,Cloud Provider 046,Infrastructure
+172.20.0.47,Cloud Provider 047,Infrastructure
+172.20.0.48,Cloud Provider 048,Infrastructure
+172.20.0.49,Cloud Provider 049,Infrastructure
+172.20.0.50,Cloud Provider 050,Infrastructure
+172.20.1.1,Partner API 001,REST endpoints
+172.20.1.2,Partner API 002,REST endpoints
+172.20.1.3,Partner API 003,REST endpoints
+172.20.1.4,Partner API 004,REST endpoints
+172.20.1.5,Partner API 005,REST endpoints
+172.20.1.6,Partner API 006,REST endpoints
+172.20.1.7,Partner API 007,REST endpoints
+172.20.1.8,Partner API 008,REST endpoints
+172.20.1.9,Partner API 009,REST endpoints
+172.20.1.10,Partner API 010,REST endpoints
+172.20.1.11,Partner API 011,REST endpoints
+172.20.1.12,Partner API 012,REST endpoints
+172.20.1.13,Partner API 013,REST endpoints
+172.20.1.14,Partner API 014,REST endpoints
+172.20.1.15,Partner API 015,REST endpoints
+172.20.1.16,Partner API 016,REST endpoints
+172.20.1.17,Partner API 017,REST endpoints
+172.20.1.18,Partner API 018,REST endpoints
+172.20.1.19,Partner API 019,REST endpoints
+172.20.1.20,Partner API 020,REST endpoints
+172.20.1.21,Partner API 021,REST endpoints
+172.20.1.22,Partner API 022,REST endpoints
+172.20.1.23,Partner API 023,REST endpoints
+172.20.1.24,Partner API 024,REST endpoints
+172.20.1.25,Partner API 025,REST endpoints
+172.20.1.26,Partner API 026,REST endpoints
+172.20.1.27,Partner API 027,REST endpoints
+172.20.1.28,Partner API 028,REST endpoints
+172.20.1.29,Partner API 029,REST endpoints
+172.20.1.30,Partner API 030,REST endpoints
+172.20.1.31,Partner API 031,REST endpoints
+172.20.1.32,Partner API 032,REST endpoints
+172.20.1.33,Partner API 033,REST endpoints
+172.20.1.34,Partner API 034,REST endpoints
+172.20.1.35,Partner API 035,REST endpoints
+172.20.1.36,Partner API 036,REST endpoints
+172.20.1.37,Partner API 037,REST endpoints
+172.20.1.38,Partner API 038,REST endpoints
+172.20.1.39,Partner API 039,REST endpoints
+172.20.1.40,Partner API 040,REST endpoints
+172.20.1.41,Partner API 041,REST endpoints
+172.20.1.42,Partner API 042,REST endpoints
+172.20.1.43,Partner API 043,REST endpoints
+172.20.1.44,Partner API 044,REST endpoints
+172.20.1.45,Partner API 045,REST endpoints
+172.20.1.46,Partner API 046,REST endpoints
+172.20.1.47,Partner API 047,REST endpoints
+172.20.1.48,Partner API 048,REST endpoints
+172.20.1.49,Partner API 049,REST endpoints
+172.20.1.50,Partner API 050,REST endpoints
+172.21.0.1,Security Scanner 001,Vulnerability testing
+172.21.0.2,Security Scanner 002,Vulnerability testing
+172.21.0.3,Security Scanner 003,Vulnerability testing
+172.21.0.4,Security Scanner 004,Vulnerability testing
+172.21.0.5,Security Scanner 005,Vulnerability testing
+172.21.0.6,Security Scanner 006,Vulnerability testing
+172.21.0.7,Security Scanner 007,Vulnerability testing
+172.21.0.8,Security Scanner 008,Vulnerability testing
+172.21.0.9,Security Scanner 009,Vulnerability testing
+172.21.0.10,Security Scanner 010,Vulnerability testing
+172.21.0.11,Security Scanner 011,Vulnerability testing
+172.21.0.12,Security Scanner 012,Vulnerability testing
+172.21.0.13,Security Scanner 013,Vulnerability testing
+172.21.0.14,Security Scanner 014,Vulnerability testing
+172.21.0.15,Security Scanner 015,Vulnerability testing
+172.21.0.16,Security Scanner 016,Vulnerability testing
+172.21.0.17,Security Scanner 017,Vulnerability testing
+172.21.0.18,Security Scanner 018,Vulnerability testing
+172.21.0.19,Security Scanner 019,Vulnerability testing
+172.21.0.20,Security Scanner 020,Vulnerability testing
+172.21.0.21,Security Scanner 021,Vulnerability testing
+172.21.0.22,Security Scanner 022,Vulnerability testing
+172.21.0.23,Security Scanner 023,Vulnerability testing
+172.21.0.24,Security Scanner 024,Vulnerability testing
+172.21.0.25,Security Scanner 025,Vulnerability testing
+172.21.0.26,Security Scanner 026,Vulnerability testing
+172.21.0.27,Security Scanner 027,Vulnerability testing
+172.21.0.28,Security Scanner 028,Vulnerability testing
+172.21.0.29,Security Scanner 029,Vulnerability testing
+172.21.0.30,Security Scanner 030,Vulnerability testing
+172.21.0.31,Security Scanner 031,Vulnerability testing
+172.21.0.32,Security Scanner 032,Vulnerability testing
+172.21.0.33,Security Scanner 033,Vulnerability testing
+172.21.0.34,Security Scanner 034,Vulnerability testing
+172.21.0.35,Security Scanner 035,Vulnerability testing
+172.21.0.36,Security Scanner 036,Vulnerability testing
+172.21.0.37,Security Scanner 037,Vulnerability testing
+172.21.0.38,Security Scanner 038,Vulnerability testing
+172.21.0.39,Security Scanner 039,Vulnerability testing
+172.21.0.40,Security Scanner 040,Vulnerability testing
+172.21.0.41,Security Scanner 041,Vulnerability testing
+172.21.0.42,Security Scanner 042,Vulnerability testing
+172.21.0.43,Security Scanner 043,Vulnerability testing
+172.21.0.44,Security Scanner 044,Vulnerability testing
+172.21.0.45,Security Scanner 045,Vulnerability testing
+172.21.0.46,Security Scanner 046,Vulnerability testing
+172.21.0.47,Security Scanner 047,Vulnerability testing
+172.21.0.48,Security Scanner 048,Vulnerability testing
+172.21.0.49,Security Scanner 049,Vulnerability testing
+172.21.0.50,Security Scanner 050,Vulnerability testing
+172.22.0.1,Monitoring Agent 001,Health checks
+172.22.0.2,Monitoring Agent 002,Health checks
+172.22.0.3,Monitoring Agent 003,Health checks
+172.22.0.4,Monitoring Agent 004,Health checks
+172.22.0.5,Monitoring Agent 005,Health checks
+172.22.0.6,Monitoring Agent 006,Health checks
+172.22.0.7,Monitoring Agent 007,Health checks
+172.22.0.8,Monitoring Agent 008,Health checks
+172.22.0.9,Monitoring Agent 009,Health checks
+172.22.0.10,Monitoring Agent 010,Health checks
+172.22.0.11,Monitoring Agent 011,Health checks
+172.22.0.12,Monitoring Agent 012,Health checks
+172.22.0.13,Monitoring Agent 013,Health checks
+172.22.0.14,Monitoring Agent 014,Health checks
+172.22.0.15,Monitoring Agent 015,Health checks
+172.22.0.16,Monitoring Agent 016,Health checks
+172.22.0.17,Monitoring Agent 017,Health checks
+172.22.0.18,Monitoring Agent 018,Health checks
+172.22.0.19,Monitoring Agent 019,Health checks
+172.22.0.20,Monitoring Agent 020,Health checks
+172.22.0.21,Monitoring Agent 021,Health checks
+172.22.0.22,Monitoring Agent 022,Health checks
+172.22.0.23,Monitoring Agent 023,Health checks
+172.22.0.24,Monitoring Agent 024,Health checks
+172.22.0.25,Monitoring Agent 025,Health checks
+172.22.0.26,Monitoring Agent 026,Health checks
+172.22.0.27,Monitoring Agent 027,Health checks
+172.22.0.28,Monitoring Agent 028,Health checks
+172.22.0.29,Monitoring Agent 029,Health checks
+172.22.0.30,Monitoring Agent 030,Health checks
+172.22.0.31,Monitoring Agent 031,Health checks
+172.22.0.32,Monitoring Agent 032,Health checks
+172.22.0.33,Monitoring Agent 033,Health checks
+172.22.0.34,Monitoring Agent 034,Health checks
+172.22.0.35,Monitoring Agent 035,Health checks
+172.22.0.36,Monitoring Agent 036,Health checks
+172.22.0.37,Monitoring Agent 037,Health checks
+172.22.0.38,Monitoring Agent 038,Health checks
+172.22.0.39,Monitoring Agent 039,Health checks
+172.22.0.40,Monitoring Agent 040,Health checks
+172.22.0.41,Monitoring Agent 041,Health checks
+172.22.0.42,Monitoring Agent 042,Health checks
+172.22.0.43,Monitoring Agent 043,Health checks
+172.22.0.44,Monitoring Agent 044,Health checks
+172.22.0.45,Monitoring Agent 045,Health checks
+172.22.0.46,Monitoring Agent 046,Health checks
+172.22.0.47,Monitoring Agent 047,Health checks
+172.22.0.48,Monitoring Agent 048,Health checks
+172.22.0.49,Monitoring Agent 049,Health checks
+172.22.0.50,Monitoring Agent 050,Health checks
+
+# More CIDR ranges (entries 701-850)
+172.30.0.0/24,Enterprise Block 001,Corporate network
+172.30.1.0/24,Enterprise Block 002,Corporate network
+172.30.2.0/24,Enterprise Block 003,Corporate network
+172.30.3.0/24,Enterprise Block 004,Corporate network
+172.30.4.0/24,Enterprise Block 005,Corporate network
+172.30.5.0/24,Enterprise Block 006,Corporate network
+172.30.6.0/24,Enterprise Block 007,Corporate network
+172.30.7.0/24,Enterprise Block 008,Corporate network
+172.30.8.0/24,Enterprise Block 009,Corporate network
+172.30.9.0/24,Enterprise Block 010,Corporate network
+172.30.10.0/24,Enterprise Block 011,Corporate network
+172.30.11.0/24,Enterprise Block 012,Corporate network
+172.30.12.0/24,Enterprise Block 013,Corporate network
+172.30.13.0/24,Enterprise Block 014,Corporate network
+172.30.14.0/24,Enterprise Block 015,Corporate network
+172.30.15.0/24,Enterprise Block 016,Corporate network
+172.30.16.0/24,Enterprise Block 017,Corporate network
+172.30.17.0/24,Enterprise Block 018,Corporate network
+172.30.18.0/24,Enterprise Block 019,Corporate network
+172.30.19.0/24,Enterprise Block 020,Corporate network
+172.30.20.0/24,Enterprise Block 021,Corporate network
+172.30.21.0/24,Enterprise Block 022,Corporate network
+172.30.22.0/24,Enterprise Block 023,Corporate network
+172.30.23.0/24,Enterprise Block 024,Corporate network
+172.30.24.0/24,Enterprise Block 025,Corporate network
+172.30.25.0/24,Enterprise Block 026,Corporate network
+172.30.26.0/24,Enterprise Block 027,Corporate network
+172.30.27.0/24,Enterprise Block 028,Corporate network
+172.30.28.0/24,Enterprise Block 029,Corporate network
+172.30.29.0/24,Enterprise Block 030,Corporate network
+172.30.30.0/24,Enterprise Block 031,Corporate network
+172.30.31.0/24,Enterprise Block 032,Corporate network
+172.30.32.0/24,Enterprise Block 033,Corporate network
+172.30.33.0/24,Enterprise Block 034,Corporate network
+172.30.34.0/24,Enterprise Block 035,Corporate network
+172.30.35.0/24,Enterprise Block 036,Corporate network
+172.30.36.0/24,Enterprise Block 037,Corporate network
+172.30.37.0/24,Enterprise Block 038,Corporate network
+172.30.38.0/24,Enterprise Block 039,Corporate network
+172.30.39.0/24,Enterprise Block 040,Corporate network
+172.30.40.0/24,Enterprise Block 041,Corporate network
+172.30.41.0/24,Enterprise Block 042,Corporate network
+172.30.42.0/24,Enterprise Block 043,Corporate network
+172.30.43.0/24,Enterprise Block 044,Corporate network
+172.30.44.0/24,Enterprise Block 045,Corporate network
+172.30.45.0/24,Enterprise Block 046,Corporate network
+172.30.46.0/24,Enterprise Block 047,Corporate network
+172.30.47.0/24,Enterprise Block 048,Corporate network
+172.30.48.0/24,Enterprise Block 049,Corporate network
+172.30.49.0/24,Enterprise Block 050,Corporate network
+172.31.0.0/25,Half Block 001,/25 subnet
+172.31.0.128/25,Half Block 002,/25 subnet
+172.31.1.0/25,Half Block 003,/25 subnet
+172.31.1.128/25,Half Block 004,/25 subnet
+172.31.2.0/25,Half Block 005,/25 subnet
+172.31.2.128/25,Half Block 006,/25 subnet
+172.31.3.0/25,Half Block 007,/25 subnet
+172.31.3.128/25,Half Block 008,/25 subnet
+172.31.4.0/25,Half Block 009,/25 subnet
+172.31.4.128/25,Half Block 010,/25 subnet
+172.31.5.0/25,Half Block 011,/25 subnet
+172.31.5.128/25,Half Block 012,/25 subnet
+172.31.6.0/25,Half Block 013,/25 subnet
+172.31.6.128/25,Half Block 014,/25 subnet
+172.31.7.0/25,Half Block 015,/25 subnet
+172.31.7.128/25,Half Block 016,/25 subnet
+172.31.8.0/25,Half Block 017,/25 subnet
+172.31.8.128/25,Half Block 018,/25 subnet
+172.31.9.0/25,Half Block 019,/25 subnet
+172.31.9.128/25,Half Block 020,/25 subnet
+172.31.10.0/25,Half Block 021,/25 subnet
+172.31.10.128/25,Half Block 022,/25 subnet
+172.31.11.0/25,Half Block 023,/25 subnet
+172.31.11.128/25,Half Block 024,/25 subnet
+172.31.12.0/25,Half Block 025,/25 subnet
+172.31.12.128/25,Half Block 026,/25 subnet
+172.31.13.0/25,Half Block 027,/25 subnet
+172.31.13.128/25,Half Block 028,/25 subnet
+172.31.14.0/25,Half Block 029,/25 subnet
+172.31.14.128/25,Half Block 030,/25 subnet
+172.31.15.0/25,Half Block 031,/25 subnet
+172.31.15.128/25,Half Block 032,/25 subnet
+172.31.16.0/25,Half Block 033,/25 subnet
+172.31.16.128/25,Half Block 034,/25 subnet
+172.31.17.0/25,Half Block 035,/25 subnet
+172.31.17.128/25,Half Block 036,/25 subnet
+172.31.18.0/25,Half Block 037,/25 subnet
+172.31.18.128/25,Half Block 038,/25 subnet
+172.31.19.0/25,Half Block 039,/25 subnet
+172.31.19.128/25,Half Block 040,/25 subnet
+172.31.20.0/25,Half Block 041,/25 subnet
+172.31.20.128/25,Half Block 042,/25 subnet
+172.31.21.0/25,Half Block 043,/25 subnet
+172.31.21.128/25,Half Block 044,/25 subnet
+172.31.22.0/25,Half Block 045,/25 subnet
+172.31.22.128/25,Half Block 046,/25 subnet
+172.31.23.0/25,Half Block 047,/25 subnet
+172.31.23.128/25,Half Block 048,/25 subnet
+172.31.24.0/25,Half Block 049,/25 subnet
+172.31.24.128/25,Half Block 050,/25 subnet
+192.168.0.0/26,Quarter Block 001,/26 subnet
+192.168.0.64/26,Quarter Block 002,/26 subnet
+192.168.0.128/26,Quarter Block 003,/26 subnet
+192.168.0.192/26,Quarter Block 004,/26 subnet
+192.168.1.0/26,Quarter Block 005,/26 subnet
+192.168.1.64/26,Quarter Block 006,/26 subnet
+192.168.1.128/26,Quarter Block 007,/26 subnet
+192.168.1.192/26,Quarter Block 008,/26 subnet
+192.168.2.0/26,Quarter Block 009,/26 subnet
+192.168.2.64/26,Quarter Block 010,/26 subnet
+192.168.2.128/26,Quarter Block 011,/26 subnet
+192.168.2.192/26,Quarter Block 012,/26 subnet
+192.168.3.0/26,Quarter Block 013,/26 subnet
+192.168.3.64/26,Quarter Block 014,/26 subnet
+192.168.3.128/26,Quarter Block 015,/26 subnet
+192.168.3.192/26,Quarter Block 016,/26 subnet
+192.168.4.0/26,Quarter Block 017,/26 subnet
+192.168.4.64/26,Quarter Block 018,/26 subnet
+192.168.4.128/26,Quarter Block 019,/26 subnet
+192.168.4.192/26,Quarter Block 020,/26 subnet
+192.168.5.0/26,Quarter Block 021,/26 subnet
+192.168.5.64/26,Quarter Block 022,/26 subnet
+192.168.5.128/26,Quarter Block 023,/26 subnet
+192.168.5.192/26,Quarter Block 024,/26 subnet
+192.168.6.0/26,Quarter Block 025,/26 subnet
+192.168.6.64/26,Quarter Block 026,/26 subnet
+192.168.6.128/26,Quarter Block 027,/26 subnet
+192.168.6.192/26,Quarter Block 028,/26 subnet
+192.168.7.0/26,Quarter Block 029,/26 subnet
+192.168.7.64/26,Quarter Block 030,/26 subnet
+192.168.7.128/26,Quarter Block 031,/26 subnet
+192.168.7.192/26,Quarter Block 032,/26 subnet
+192.168.8.0/26,Quarter Block 033,/26 subnet
+192.168.8.64/26,Quarter Block 034,/26 subnet
+192.168.8.128/26,Quarter Block 035,/26 subnet
+192.168.8.192/26,Quarter Block 036,/26 subnet
+192.168.9.0/26,Quarter Block 037,/26 subnet
+192.168.9.64/26,Quarter Block 038,/26 subnet
+192.168.9.128/26,Quarter Block 039,/26 subnet
+192.168.9.192/26,Quarter Block 040,/26 subnet
+192.168.10.0/26,Quarter Block 041,/26 subnet
+192.168.10.64/26,Quarter Block 042,/26 subnet
+192.168.10.128/26,Quarter Block 043,/26 subnet
+192.168.10.192/26,Quarter Block 044,/26 subnet
+192.168.11.0/26,Quarter Block 045,/26 subnet
+192.168.11.64/26,Quarter Block 046,/26 subnet
+192.168.11.128/26,Quarter Block 047,/26 subnet
+192.168.11.192/26,Quarter Block 048,/26 subnet
+192.168.12.0/26,Quarter Block 049,/26 subnet
+192.168.12.64/26,Quarter Block 050,/26 subnet
+
+# Final batch of individual IPs (entries 851-1000)
+10.100.0.1,Final Vendor 001,Stress test entry
+10.100.0.2,Final Vendor 002,Stress test entry
+10.100.0.3,Final Vendor 003,Stress test entry
+10.100.0.4,Final Vendor 004,Stress test entry
+10.100.0.5,Final Vendor 005,Stress test entry
+10.100.0.6,Final Vendor 006,Stress test entry
+10.100.0.7,Final Vendor 007,Stress test entry
+10.100.0.8,Final Vendor 008,Stress test entry
+10.100.0.9,Final Vendor 009,Stress test entry
+10.100.0.10,Final Vendor 010,Stress test entry
+10.100.0.11,Final Vendor 011,Stress test entry
+10.100.0.12,Final Vendor 012,Stress test entry
+10.100.0.13,Final Vendor 013,Stress test entry
+10.100.0.14,Final Vendor 014,Stress test entry
+10.100.0.15,Final Vendor 015,Stress test entry
+10.100.0.16,Final Vendor 016,Stress test entry
+10.100.0.17,Final Vendor 017,Stress test entry
+10.100.0.18,Final Vendor 018,Stress test entry
+10.100.0.19,Final Vendor 019,Stress test entry
+10.100.0.20,Final Vendor 020,Stress test entry
+10.100.0.21,Final Vendor 021,Stress test entry
+10.100.0.22,Final Vendor 022,Stress test entry
+10.100.0.23,Final Vendor 023,Stress test entry
+10.100.0.24,Final Vendor 024,Stress test entry
+10.100.0.25,Final Vendor 025,Stress test entry
+10.100.0.26,Final Vendor 026,Stress test entry
+10.100.0.27,Final Vendor 027,Stress test entry
+10.100.0.28,Final Vendor 028,Stress test entry
+10.100.0.29,Final Vendor 029,Stress test entry
+10.100.0.30,Final Vendor 030,Stress test entry
+10.100.0.31,Final Vendor 031,Stress test entry
+10.100.0.32,Final Vendor 032,Stress test entry
+10.100.0.33,Final Vendor 033,Stress test entry
+10.100.0.34,Final Vendor 034,Stress test entry
+10.100.0.35,Final Vendor 035,Stress test entry
+10.100.0.36,Final Vendor 036,Stress test entry
+10.100.0.37,Final Vendor 037,Stress test entry
+10.100.0.38,Final Vendor 038,Stress test entry
+10.100.0.39,Final Vendor 039,Stress test entry
+10.100.0.40,Final Vendor 040,Stress test entry
+10.100.0.41,Final Vendor 041,Stress test entry
+10.100.0.42,Final Vendor 042,Stress test entry
+10.100.0.43,Final Vendor 043,Stress test entry
+10.100.0.44,Final Vendor 044,Stress test entry
+10.100.0.45,Final Vendor 045,Stress test entry
+10.100.0.46,Final Vendor 046,Stress test entry
+10.100.0.47,Final Vendor 047,Stress test entry
+10.100.0.48,Final Vendor 048,Stress test entry
+10.100.0.49,Final Vendor 049,Stress test entry
+10.100.0.50,Final Vendor 050,Stress test entry
+10.100.1.1,"Edge Case, Inc. 001",Complex vendor name
+10.100.1.2,"Edge Case, Inc. 002",Complex vendor name
+10.100.1.3,"Edge Case, Inc. 003",Complex vendor name
+10.100.1.4,"Edge Case, Inc. 004",Complex vendor name
+10.100.1.5,"Edge Case, Inc. 005",Complex vendor name
+10.100.1.6,"Edge Case, Inc. 006",Complex vendor name
+10.100.1.7,"Edge Case, Inc. 007",Complex vendor name
+10.100.1.8,"Edge Case, Inc. 008",Complex vendor name
+10.100.1.9,"Edge Case, Inc. 009",Complex vendor name
+10.100.1.10,"Edge Case, Inc. 010",Complex vendor name
+10.100.1.11,"Edge Case, Inc. 011",Complex vendor name
+10.100.1.12,"Edge Case, Inc. 012",Complex vendor name
+10.100.1.13,"Edge Case, Inc. 013",Complex vendor name
+10.100.1.14,"Edge Case, Inc. 014",Complex vendor name
+10.100.1.15,"Edge Case, Inc. 015",Complex vendor name
+10.100.1.16,"Edge Case, Inc. 016",Complex vendor name
+10.100.1.17,"Edge Case, Inc. 017",Complex vendor name
+10.100.1.18,"Edge Case, Inc. 018",Complex vendor name
+10.100.1.19,"Edge Case, Inc. 019",Complex vendor name
+10.100.1.20,"Edge Case, Inc. 020",Complex vendor name
+10.100.1.21,"Edge Case, Inc. 021",Complex vendor name
+10.100.1.22,"Edge Case, Inc. 022",Complex vendor name
+10.100.1.23,"Edge Case, Inc. 023",Complex vendor name
+10.100.1.24,"Edge Case, Inc. 024",Complex vendor name
+10.100.1.25,"Edge Case, Inc. 025",Complex vendor name
+10.100.1.26,"Edge Case, Inc. 026",Complex vendor name
+10.100.1.27,"Edge Case, Inc. 027",Complex vendor name
+10.100.1.28,"Edge Case, Inc. 028",Complex vendor name
+10.100.1.29,"Edge Case, Inc. 029",Complex vendor name
+10.100.1.30,"Edge Case, Inc. 030",Complex vendor name
+10.100.1.31,"Edge Case, Inc. 031",Complex vendor name
+10.100.1.32,"Edge Case, Inc. 032",Complex vendor name
+10.100.1.33,"Edge Case, Inc. 033",Complex vendor name
+10.100.1.34,"Edge Case, Inc. 034",Complex vendor name
+10.100.1.35,"Edge Case, Inc. 035",Complex vendor name
+10.100.1.36,"Edge Case, Inc. 036",Complex vendor name
+10.100.1.37,"Edge Case, Inc. 037",Complex vendor name
+10.100.1.38,"Edge Case, Inc. 038",Complex vendor name
+10.100.1.39,"Edge Case, Inc. 039",Complex vendor name
+10.100.1.40,"Edge Case, Inc. 040",Complex vendor name
+10.100.1.41,"Edge Case, Inc. 041",Complex vendor name
+10.100.1.42,"Edge Case, Inc. 042",Complex vendor name
+10.100.1.43,"Edge Case, Inc. 043",Complex vendor name
+10.100.1.44,"Edge Case, Inc. 044",Complex vendor name
+10.100.1.45,"Edge Case, Inc. 045",Complex vendor name
+10.100.1.46,"Edge Case, Inc. 046",Complex vendor name
+10.100.1.47,"Edge Case, Inc. 047",Complex vendor name
+10.100.1.48,"Edge Case, Inc. 048",Complex vendor name
+10.100.1.49,"Edge Case, Inc. 049",Complex vendor name
+10.100.1.50,"Edge Case, Inc. 050",Complex vendor name
+10.101.0.1,Bulk Import 001,Mass whitelist test
+10.101.0.2,Bulk Import 002,Mass whitelist test
+10.101.0.3,Bulk Import 003,Mass whitelist test
+10.101.0.4,Bulk Import 004,Mass whitelist test
+10.101.0.5,Bulk Import 005,Mass whitelist test
+10.101.0.6,Bulk Import 006,Mass whitelist test
+10.101.0.7,Bulk Import 007,Mass whitelist test
+10.101.0.8,Bulk Import 008,Mass whitelist test
+10.101.0.9,Bulk Import 009,Mass whitelist test
+10.101.0.10,Bulk Import 010,Mass whitelist test
+10.101.0.11,Bulk Import 011,Mass whitelist test
+10.101.0.12,Bulk Import 012,Mass whitelist test
+10.101.0.13,Bulk Import 013,Mass whitelist test
+10.101.0.14,Bulk Import 014,Mass whitelist test
+10.101.0.15,Bulk Import 015,Mass whitelist test
+10.101.0.16,Bulk Import 016,Mass whitelist test
+10.101.0.17,Bulk Import 017,Mass whitelist test
+10.101.0.18,Bulk Import 018,Mass whitelist test
+10.101.0.19,Bulk Import 019,Mass whitelist test
+10.101.0.20,Bulk Import 020,Mass whitelist test
+10.101.0.21,Bulk Import 021,Mass whitelist test
+10.101.0.22,Bulk Import 022,Mass whitelist test
+10.101.0.23,Bulk Import 023,Mass whitelist test
+10.101.0.24,Bulk Import 024,Mass whitelist test
+10.101.0.25,Bulk Import 025,Mass whitelist test
+10.101.0.26,Bulk Import 026,Mass whitelist test
+10.101.0.27,Bulk Import 027,Mass whitelist test
+10.101.0.28,Bulk Import 028,Mass whitelist test
+10.101.0.29,Bulk Import 029,Mass whitelist test
+10.101.0.30,Bulk Import 030,Mass whitelist test
+10.101.0.31,Bulk Import 031,Mass whitelist test
+10.101.0.32,Bulk Import 032,Mass whitelist test
+10.101.0.33,Bulk Import 033,Mass whitelist test
+10.101.0.34,Bulk Import 034,Mass whitelist test
+10.101.0.35,Bulk Import 035,Mass whitelist test
+10.101.0.36,Bulk Import 036,Mass whitelist test
+10.101.0.37,Bulk Import 037,Mass whitelist test
+10.101.0.38,Bulk Import 038,Mass whitelist test
+10.101.0.39,Bulk Import 039,Mass whitelist test
+10.101.0.40,Bulk Import 040,Mass whitelist test
+10.101.0.41,Bulk Import 041,Mass whitelist test
+10.101.0.42,Bulk Import 042,Mass whitelist test
+10.101.0.43,Bulk Import 043,Mass whitelist test
+10.101.0.44,Bulk Import 044,Mass whitelist test
+10.101.0.45,Bulk Import 045,Mass whitelist test
+10.101.0.46,Bulk Import 046,Mass whitelist test
+10.101.0.47,Bulk Import 047,Mass whitelist test
+10.101.0.48,Bulk Import 048,Mass whitelist test
+10.101.0.49,Bulk Import 049,Mass whitelist test
+10.101.0.50,Bulk Import 050,Mass whitelist test
+10.102.0.1,Overflow Entry 001,Reaching 1000
+10.102.0.2,Overflow Entry 002,Reaching 1000
+10.102.0.3,Overflow Entry 003,Reaching 1000
+10.102.0.4,Overflow Entry 004,Reaching 1000
+10.102.0.5,Overflow Entry 005,Reaching 1000
+10.102.0.6,Overflow Entry 006,Reaching 1000
+10.102.0.7,Overflow Entry 007,Reaching 1000
+10.102.0.8,Overflow Entry 008,Reaching 1000
+10.102.0.9,Overflow Entry 009,Reaching 1000
+10.102.0.10,Overflow Entry 010,Reaching 1000
+10.102.0.11,Overflow Entry 011,Reaching 1000
+10.102.0.12,Overflow Entry 012,Reaching 1000
+10.102.0.13,Overflow Entry 013,Reaching 1000
+10.102.0.14,Overflow Entry 014,Reaching 1000
+10.102.0.15,Overflow Entry 015,Reaching 1000
+10.102.0.16,Overflow Entry 016,Reaching 1000
+10.102.0.17,Overflow Entry 017,Reaching 1000
+10.102.0.18,Overflow Entry 018,Reaching 1000
+10.102.0.19,Overflow Entry 019,Reaching 1000
+10.102.0.20,Overflow Entry 020,Reaching 1000
+10.102.1.0/24,Overflow CIDR 001,CIDR to hit limit
+10.102.2.0/24,Overflow CIDR 002,CIDR to hit limit
+10.102.3.0/24,Overflow CIDR 003,CIDR to hit limit
+10.102.4.0/24,Overflow CIDR 004,CIDR to hit limit
+10.102.5.0/24,Overflow CIDR 005,CIDR to hit limit
+10.102.6.0/24,Overflow CIDR 006,CIDR to hit limit
+10.102.7.0/24,Overflow CIDR 007,CIDR to hit limit
+10.102.8.0/24,Overflow CIDR 008,CIDR to hit limit
+10.102.9.0/24,Overflow CIDR 009,CIDR to hit limit
+10.102.10.0/24,Overflow CIDR 010,CIDR to hit limit
+10.102.11.0/24,Overflow CIDR 011,CIDR to hit limit
+10.102.12.0/24,Overflow CIDR 012,CIDR to hit limit
+10.102.13.0/24,Overflow CIDR 013,CIDR to hit limit
+10.102.14.0/24,Overflow CIDR 014,CIDR to hit limit
+10.102.15.0/24,Overflow CIDR 015,CIDR to hit limit
+10.102.16.0/24,Overflow CIDR 016,CIDR to hit limit
+10.102.17.0/24,Overflow CIDR 017,CIDR to hit limit
+10.102.18.0/24,Overflow CIDR 018,CIDR to hit limit
+10.102.19.0/24,Overflow CIDR 019,CIDR to hit limit
+10.102.20.0/24,Overflow CIDR 020,CIDR to hit limit
+10.103.0.1,"Final, ""Edge"" Case 001",All special chars
+10.103.0.2,"Final, ""Edge"" Case 002",All special chars
+10.103.0.3,"Final, ""Edge"" Case 003",All special chars
+10.103.0.4,"Final, ""Edge"" Case 004",All special chars
+10.103.0.5,"Final, ""Edge"" Case 005",All special chars
+10.103.0.6,"Final, ""Edge"" Case 006",All special chars
+10.103.0.7,"Final, ""Edge"" Case 007",All special chars
+10.103.0.8,"Final, ""Edge"" Case 008",All special chars
+10.103.0.9,"Final, ""Edge"" Case 009",All special chars
+10.103.0.10,"Final, ""Edge"" Case 010",All special chars
+10.103.0.11,O'Malley's Pub 001,Irish apostrophe
+10.103.0.12,O'Malley's Pub 002,Irish apostrophe
+10.103.0.13,O'Malley's Pub 003,Irish apostrophe
+10.103.0.14,O'Malley's Pub 004,Irish apostrophe
+10.103.0.15,O'Malley's Pub 005,Irish apostrophe
+10.103.0.16,O'Malley's Pub 006,Irish apostrophe
+10.103.0.17,O'Malley's Pub 007,Irish apostrophe
+10.103.0.18,O'Malley's Pub 008,Irish apostrophe
+10.103.0.19,O'Malley's Pub 009,Irish apostrophe
+10.103.0.20,O'Malley's Pub 010,Irish apostrophe

@@ -25,7 +25,7 @@
 #   TEAM_ID (optional): Team ID if project belongs to a team
 #   TEAM_SLUG (optional): Team slug (alternative to TEAM_ID)
 #   DRY_RUN (optional): Set to "true" to preview without applying
-#   HOSTNAME (optional): Hostname pattern for scoped rules (e.g., "api.crocs.com")
+#   RULE_HOSTNAME (optional): Hostname pattern for scoped rules (e.g., "api.crocs.com")
 #   AUDIT_LOG (optional): Path to audit log file
 #
 # Security Notes:
@@ -61,11 +61,11 @@ readonly NC='\033[0m'
 # =============================================================================
 
 log_info() {
-  echo -e "${GREEN}[INFO]${NC} $1"
+  echo -e "${GREEN}[INFO]${NC} $1" >&2
 }
 
 log_warn() {
-  echo -e "${YELLOW}[WARN]${NC} $1"
+  echo -e "${YELLOW}[WARN]${NC} $1" >&2
 }
 
 log_error() {
@@ -74,7 +74,7 @@ log_error() {
 
 log_debug() {
   if [ "${DEBUG:-false}" = "true" ]; then
-    echo -e "${BLUE}[DEBUG]${NC} $1"
+    echo -e "${BLUE}[DEBUG]${NC} $1" >&2
   fi
 }
 
@@ -137,28 +137,161 @@ rate_limit_sleep() {
 }
 
 # =============================================================================
+# Auto-detect from Vercel CLI
+# =============================================================================
+
+# Fetch team slug from Vercel API using team ID
+# Some Vercel API endpoints prefer slug over teamId
+fetch_team_slug() {
+  local team_id="$1"
+  
+  if [ -z "$team_id" ] || [ -z "${VERCEL_TOKEN:-}" ]; then
+    return 1
+  fi
+  
+  log_debug "Fetching team slug for: $team_id"
+  
+  local response
+  response=$(curl -s -w "\n%{http_code}" -X GET "${API_BASE}/v2/teams/${team_id}" \
+    -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+    -H "Content-Type: application/json" 2>/dev/null)
+  
+  local http_code
+  http_code=$(echo "$response" | tail -n1)
+  local body
+  body=$(echo "$response" | sed '$d')
+  
+  if [ "$http_code" -eq 200 ]; then
+    local slug
+    slug=$(echo "$body" | jq -r '.slug // empty' 2>/dev/null)
+    if [ -n "$slug" ]; then
+      echo "$slug"
+      return 0
+    fi
+  fi
+  
+  return 1
+}
+
+# Try to load PROJECT_ID and TEAM_ID from .vercel/project.json
+# This file is created by `vercel link`
+auto_detect_vercel_config() {
+  local search_dir="${1:-.}"
+  local vercel_config=""
+  
+  # Search for .vercel/project.json in current dir and parent dirs
+  local dir="$search_dir"
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/.vercel/project.json" ]; then
+      vercel_config="$dir/.vercel/project.json"
+      break
+    fi
+    dir=$(dirname "$dir")
+  done
+  
+  if [ -z "$vercel_config" ]; then
+    return 1
+  fi
+  
+  log_debug "Found Vercel config: $vercel_config"
+  
+  # Extract projectId and orgId (team ID)
+  local project_id
+  local org_id
+  project_id=$(jq -r '.projectId // empty' "$vercel_config" 2>/dev/null)
+  org_id=$(jq -r '.orgId // empty' "$vercel_config" 2>/dev/null)
+  
+  if [ -n "$project_id" ] && [ -z "${PROJECT_ID:-}" ]; then
+    export PROJECT_ID="$project_id"
+    log_info "Auto-detected PROJECT_ID: $project_id"
+  fi
+  
+  if [ -n "$org_id" ] && [ -z "${TEAM_ID:-}" ]; then
+    export TEAM_ID="$org_id"
+    log_info "Auto-detected TEAM_ID: $org_id"
+  fi
+  
+  return 0
+}
+
+# Fetch team slug after token is validated (requires API access)
+resolve_team_slug() {
+  # Skip if we already have a slug or no team ID
+  if [ -n "${TEAM_SLUG:-}" ] || [ -z "${TEAM_ID:-}" ]; then
+    return 0
+  fi
+  
+  local slug
+  slug=$(fetch_team_slug "$TEAM_ID")
+  
+  if [ -n "$slug" ]; then
+    export TEAM_SLUG="$slug"
+    log_info "Resolved TEAM_SLUG: $slug"
+  fi
+}
+
+# Generate shell exports for environment setup
+generate_env_exports() {
+  local vercel_config="${1:-.vercel/project.json}"
+  
+  if [ ! -f "$vercel_config" ]; then
+    echo "# Run 'vercel link' first to create .vercel/project.json"
+    return 1
+  fi
+  
+  local project_id
+  local org_id
+  project_id=$(jq -r '.projectId // empty' "$vercel_config" 2>/dev/null)
+  org_id=$(jq -r '.orgId // empty' "$vercel_config" 2>/dev/null)
+  
+  echo "# Auto-generated from $vercel_config"
+  echo "# Add these to your shell or .env file:"
+  echo ""
+  if [ -n "$project_id" ]; then
+    echo "export PROJECT_ID=\"$project_id\""
+  fi
+  if [ -n "$org_id" ]; then
+    echo "export TEAM_ID=\"$org_id\""
+  fi
+  echo ""
+  echo "# Create a token at https://vercel.com/account/tokens"
+  echo "# Required scopes: read:project, write:project"
+  echo "export VERCEL_TOKEN=\"your-token-here\""
+}
+
+# =============================================================================
 # API Functions
 # =============================================================================
 
-# Build team query parameter (supports both TEAM_ID and TEAM_SLUG)
-get_team_param() {
+# Build team query parameters
+# Some Vercel API endpoints work better with slug, others with teamId
+# We include both when available for maximum compatibility
+get_team_params() {
+  local params=""
+  
   if [ -n "${TEAM_ID:-}" ]; then
-    echo "teamId=${TEAM_ID}"
-  elif [ -n "${TEAM_SLUG:-}" ]; then
-    echo "slug=${TEAM_SLUG}"
-  else
-    echo ""
+    params="teamId=${TEAM_ID}"
   fi
+  
+  if [ -n "${TEAM_SLUG:-}" ]; then
+    if [ -n "$params" ]; then
+      params="${params}&slug=${TEAM_SLUG}"
+    else
+      params="slug=${TEAM_SLUG}"
+    fi
+  fi
+  
+  echo "$params"
 }
 
 # Build query string with project and team
 build_query_string() {
   local project_id="$1"
-  local team_param
-  team_param=$(get_team_param)
+  local team_params
+  team_params=$(get_team_params)
   
-  if [ -n "$team_param" ]; then
-    echo "?projectId=${project_id}&${team_param}"
+  if [ -n "$team_params" ]; then
+    echo "?projectId=${project_id}&${team_params}"
   else
     echo "?projectId=${project_id}"
   fi
@@ -242,7 +375,8 @@ api_request() {
   return 1
 }
 
-# Get current firewall configuration (active rules)
+# Get current firewall configuration
+# Tries multiple endpoint formats for compatibility
 get_firewall_config() {
   local project_id="$1"
   local query_string
@@ -250,37 +384,161 @@ get_firewall_config() {
   
   log_info "Fetching current firewall configuration..."
   
+  # Try the PATCH endpoint to get current config (returns config on success)
+  # First, try to list IP rules which will tell us if firewall is accessible
   local response
-  response=$(api_request "GET" "/v1/security/firewall/config/active${query_string}")
-  
   local http_code
-  http_code=$(echo "$response" | tail -n1)
   local body
+  
+  # Method 1: Try GET on the project's firewall config
+  log_debug "Trying: GET /v1/security/firewall/config${query_string}"
+  response=$(api_request "GET" "/v1/security/firewall/config${query_string}")
+  http_code=$(echo "$response" | tail -n1)
   body=$(echo "$response" | sed '$d')
   
-  if [ "$http_code" -ne 200 ]; then
-    log_error "Failed to get firewall config (HTTP $http_code)"
-    echo "$body" | jq '.' 2>/dev/null || echo "$body"
-    return 1
-  fi
-  
-  echo "$body"
-}
-
-# Find our managed allowlist rule in the config
-find_allowlist_rule() {
-  local config="$1"
-  
-  # Find rule by name
-  local rule
-  rule=$(echo "$config" | jq -c --arg name "$RULE_NAME" '.rules[] | select(.name == $name)' 2>/dev/null || echo "")
-  
-  if [ -n "$rule" ]; then
-    echo "$rule"
+  if [ "$http_code" -eq 200 ]; then
+    echo "$body"
     return 0
   fi
   
+  # Method 2: Try with explicit "active" as configVersion path parameter
+  log_debug "Trying: GET /v1/security/firewall/config/active${query_string}"
+  response=$(api_request "GET" "/v1/security/firewall/config/active${query_string}")
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+  
+  if [ "$http_code" -eq 200 ]; then
+    echo "$body"
+    return 0
+  fi
+  
+  # Method 3: Try using slug instead of teamId if we have both
+  if [ -n "${TEAM_ID:-}" ] && [ -n "${TEAM_SLUG:-}" ]; then
+    local slug_query="?projectId=${project_id}&slug=${TEAM_SLUG}"
+    log_debug "Trying with slug: GET /v1/security/firewall/config${slug_query}"
+    response=$(api_request "GET" "/v1/security/firewall/config${slug_query}")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" -eq 200 ]; then
+      echo "$body"
+      return 0
+    fi
+  fi
+  
+  # All methods failed
+  log_error "Failed to get firewall config (HTTP $http_code)"
+  
+  if [ "$http_code" -eq 404 ]; then
+    log_error "Firewall config not found. Possible causes:"
+    log_error "  - Project is not on Pro/Enterprise plan (Firewall requires Pro+)"
+    log_error "  - Firewall is not enabled for this project"
+    log_error "  - PROJECT_ID is incorrect: $project_id"
+    log_error "  - TEAM_ID/TEAM_SLUG mismatch"
+    log_error ""
+    log_error "Try setting TEAM_SLUG manually (from your Vercel URL):"
+    log_error "  export TEAM_SLUG=\"your-team-slug\""
+  elif [ "$http_code" -eq 403 ]; then
+    log_error "Access denied. Check token permissions (need read:project, write:project)."
+  fi
+  
+  echo "$body" | jq '.' 2>/dev/null || echo "$body"
   return 1
+}
+
+# Find our managed allowlist rule(s) in the config
+# Returns all matching rules (there might be duplicates)
+find_allowlist_rules() {
+  local config="$1"
+  local rules=""
+  
+  log_debug "Searching for rules with name: $RULE_NAME"
+  
+  # Handle empty or invalid config
+  if [ -z "$config" ] || [ "$config" = "{}" ] || [ "$config" = "null" ]; then
+    log_debug "Config is empty, returning empty array"
+    echo "[]"
+    return 0
+  fi
+  
+  # Structure 1: Nested under .active.rules (most common from API)
+  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.active.rules[]? | select(.name == $name)] // []' 2>/dev/null) || rules="[]"
+  
+  if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
+    log_debug "Found rules in .active.rules: $rules"
+    echo "$rules"
+    return 0
+  fi
+  
+  # Structure 2: Direct .rules array
+  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.rules[]? | select(.name == $name)] // []' 2>/dev/null) || rules="[]"
+  
+  if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
+    log_debug "Found rules in .rules: $rules"
+    echo "$rules"
+    return 0
+  fi
+  
+  log_debug "No matching rules found"
+  echo "[]"
+  return 0
+}
+
+# Find single allowlist rule (for backward compatibility)
+find_allowlist_rule() {
+  local config="$1"
+  local rules
+  rules=$(find_allowlist_rules "$config") || rules="[]"
+  
+  # Return the first rule if any exist
+  local first_rule
+  first_rule=$(echo "$rules" | jq -c '.[0] // empty' 2>/dev/null) || first_rule=""
+  
+  if [ -n "$first_rule" ] && [ "$first_rule" != "null" ]; then
+    echo "$first_rule"
+    return 0
+  fi
+  
+  # Return empty string, not error (to avoid triggering set -e)
+  echo ""
+  return 0
+}
+
+# Remove all rules matching our name (cleanup duplicates)
+cleanup_duplicate_rules() {
+  local project_id="$1"
+  local config="$2"
+  
+  local rules
+  rules=$(find_allowlist_rules "$config")
+  
+  local rule_count
+  rule_count=$(echo "$rules" | jq 'length' 2>/dev/null || echo "0")
+  
+  if [ "$rule_count" -le 1 ]; then
+    # 0 or 1 rule is fine, no cleanup needed
+    return 0
+  fi
+  
+  log_warn "Found $rule_count duplicate rules. Cleaning up..."
+  
+  # Remove all rules (we'll insert a fresh one after)
+  local query_string
+  query_string=$(build_query_string "$project_id")
+  
+  echo "$rules" | jq -r '.[].id' | while read -r rule_id; do
+    if [ -n "$rule_id" ] && [ "$rule_id" != "null" ]; then
+      log_info "Removing duplicate rule: $rule_id"
+      
+      local request_body
+      request_body=$(jq -n --arg id "$rule_id" '{action: "rules.remove", id: $id}')
+      
+      api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body" > /dev/null
+      rate_limit_sleep
+    fi
+  done
+  
+  log_info "Cleanup complete"
 }
 
 # Create or update the allowlist rule
@@ -289,7 +547,7 @@ update_allowlist_rule() {
   local ips_json="$2"
   local action="$3"  # "insert" or "update"
   local existing_rule_id="${4:-}"
-  local hostname="${HOSTNAME:-}"
+  local hostname="${RULE_HOSTNAME:-}"
   
   local query_string
   query_string=$(build_query_string "$project_id")
@@ -313,6 +571,7 @@ update_allowlist_rule() {
   fi
   
   # Build the rule value
+  # For custom rules, 'action' must be an object with 'mitigate' containing the action
   local rule_value
   rule_value=$(jq -n \
     --arg name "$RULE_NAME" \
@@ -325,10 +584,7 @@ update_allowlist_rule() {
       conditionGroup: [{conditions: $conditions}],
       action: {
         mitigate: {
-          action: "deny",
-          rateLimit: null,
-          redirect: null,
-          actionDuration: null
+          action: "deny"
         }
       }
     }')
@@ -579,8 +835,10 @@ cmd_apply() {
   fi
   
   echo ""
+  log_info "Project ID: $project_id"
+  [ -n "${TEAM_ID:-}" ] && log_info "Team ID: $TEAM_ID"
   log_info "IPs to allowlist: $ip_count"
-  log_info "Hostname scope: ${HOSTNAME:-project-wide}"
+  log_info "Hostname scope: ${RULE_HOSTNAME:-project-wide}"
   echo ""
   
   # Preview
@@ -605,17 +863,33 @@ cmd_apply() {
   local config
   config=$(get_firewall_config "$project_id")
   if [ $? -ne 0 ]; then
-    exit 1
+    # If we can't get config, assume no rules exist and proceed with insert
+    log_warn "Could not fetch current config. Will attempt to create new rule."
+    config="{}"
   fi
   
-  # Check for existing rule
-  local existing_rule
-  existing_rule=$(find_allowlist_rule "$config" || echo "")
+  log_debug "Firewall config response: $(echo "$config" | jq -c '.' 2>/dev/null || echo "$config")"
+  
+  # Check for existing rules and clean up duplicates
+  local all_rules
+  all_rules=$(find_allowlist_rules "$config")
+  local rule_count
+  rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
+  
+  log_debug "Found $rule_count existing rule(s) with our name"
   
   local action="insert"
   local existing_rule_id=""
   
-  if [ -n "$existing_rule" ]; then
+  if [ "$rule_count" -gt 1 ]; then
+    # Multiple rules found - clean up duplicates
+    log_warn "Found $rule_count duplicate rules. Will clean up and create fresh rule."
+    cleanup_duplicate_rules "$project_id" "$config"
+    action="insert"
+  elif [ "$rule_count" -eq 1 ]; then
+    # Single rule found - update it
+    local existing_rule
+    existing_rule=$(echo "$all_rules" | jq -c '.[0]')
     existing_rule_id=$(echo "$existing_rule" | jq -r '.id')
     local existing_ip_count
     existing_ip_count=$(echo "$existing_rule" | jq '.conditionGroup[0].conditions[] | select(.type == "ip_address") | .value | length' 2>/dev/null || echo "0")
@@ -623,6 +897,8 @@ cmd_apply() {
     log_info "Found existing allowlist rule (ID: $existing_rule_id)"
     log_info "Current IP count: $existing_ip_count"
     action="update"
+  else
+    log_info "No existing allowlist rule found. Will create new rule."
   fi
   
   # Confirm
@@ -660,10 +936,10 @@ cmd_apply() {
     log_info "Allowlist rule ${action}ed successfully!"
     log_info "Whitelisted IPs: $ip_count"
     log_info "All other traffic will be BLOCKED."
-    audit_log "ALLOWLIST_${action^^}" "ip_count=$ip_count"
+    audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')" "ip_count=$ip_count"
   else
     log_error "Failed to $action allowlist rule"
-    audit_log "ALLOWLIST_${action^^}_FAILED" "ip_count=$ip_count"
+    audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')_FAILED" "ip_count=$ip_count"
     exit 1
   fi
 }
@@ -850,6 +1126,86 @@ cmd_backup() {
   audit_log "BACKUP_CREATED" "file=$backup_file"
 }
 
+cmd_setup() {
+  local project_dir="${1:-$(pwd)}"
+  
+  echo ""
+  echo "=============================================="
+  echo "  Vercel IP Allowlist Setup"
+  echo "=============================================="
+  echo ""
+  
+  # Check for .vercel/project.json
+  local vercel_config=""
+  local dir="$project_dir"
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/.vercel/project.json" ]; then
+      vercel_config="$dir/.vercel/project.json"
+      break
+    fi
+    dir=$(dirname "$dir")
+  done
+  
+  if [ -z "$vercel_config" ]; then
+    log_warn "No .vercel/project.json found in $project_dir or parent directories."
+    echo ""
+    echo "To enable auto-detection, run 'vercel link' in your project directory:"
+    echo ""
+    echo "  cd /path/to/your/vercel/project"
+    echo "  vercel link"
+    echo ""
+    echo "Or set environment variables manually:"
+    echo ""
+    echo "  export VERCEL_TOKEN=\"your-token-here\"  # Required"
+    echo "  export PROJECT_ID=\"prj_xxxxx\"          # Get from Vercel dashboard"
+    echo "  export TEAM_ID=\"team_xxxxx\"            # Optional, for team projects"
+    echo ""
+    echo "Create a token at: https://vercel.com/account/tokens"
+    echo "Required scopes: read:project, write:project"
+    echo ""
+    return 0
+  fi
+  
+  log_info "Found Vercel config: $vercel_config"
+  echo ""
+  
+  local project_id
+  local org_id
+  project_id=$(jq -r '.projectId // empty' "$vercel_config" 2>/dev/null)
+  org_id=$(jq -r '.orgId // empty' "$vercel_config" 2>/dev/null)
+  
+  echo "Detected configuration:"
+  [ -n "$project_id" ] && echo "  PROJECT_ID: $project_id"
+  [ -n "$org_id" ] && echo "  TEAM_ID:    $org_id"
+  echo ""
+  
+  echo "----------------------------------------------"
+  echo "Setup Options:"
+  echo "----------------------------------------------"
+  echo ""
+  echo "Option 1: Auto-detect (recommended)"
+  echo ""
+  echo "  The script auto-detects PROJECT_ID and TEAM_ID from .vercel/project.json."
+  echo "  You only need to set VERCEL_TOKEN:"
+  echo ""
+  echo "  export VERCEL_TOKEN=\"your-token-here\""
+  echo "  ./vercel-ip-allowlist.sh apply vendor-ips.csv"
+  echo ""
+  
+  echo "Option 2: Export all variables"
+  echo ""
+  [ -n "$project_id" ] && echo "  export PROJECT_ID=\"$project_id\""
+  [ -n "$org_id" ] && echo "  export TEAM_ID=\"$org_id\""
+  echo "  export VERCEL_TOKEN=\"your-token-here\""
+  echo ""
+  
+  echo "----------------------------------------------"
+  echo ""
+  echo "Create a token at: https://vercel.com/account/tokens"
+  echo "Required scopes: read:project, write:project"
+  echo ""
+}
+
 show_usage() {
   cat << EOF
 Vercel IP Allowlist Script
@@ -859,6 +1215,7 @@ DESCRIPTION:
   This is different from bypass rules which only skip WAF checks.
 
 USAGE:
+  $0 setup                Show environment setup instructions
   $0 apply <csv_file>     Create/update allowlist rule with IPs from CSV
   $0 show                 Show current allowlist configuration
   $0 disable              Disable the allowlist rule (keeps config)
@@ -871,15 +1228,18 @@ OPTIONS:
   --help                  Show this help message
 
 ENVIRONMENT VARIABLES:
-  VERCEL_TOKEN   (required) Vercel API token with read:project, write:project scopes
-  PROJECT_ID     (required) Project ID
-  TEAM_ID        (optional) Team ID if project belongs to a team
+  VERCEL_TOKEN   (required) Vercel API token - create at https://vercel.com/account/tokens
+  PROJECT_ID     (auto)     Auto-detected from .vercel/project.json, or set manually
+  TEAM_ID        (auto)     Auto-detected from .vercel/project.json, or set manually
   TEAM_SLUG      (optional) Team slug (alternative to TEAM_ID)
-  HOSTNAME       (optional) Hostname pattern for scoped rules (e.g., "api.crocs.com")
+  RULE_HOSTNAME  (optional) Hostname pattern for scoped rules (e.g., "api.crocs.com")
   DRY_RUN        (optional) Set to "true" for preview mode
   AUDIT_LOG      (optional) Path to audit log file
   DEBUG          (optional) Set to "true" for verbose output
   BACKUP_DIR     (optional) Directory for backups (default: ./backups)
+
+  Note: PROJECT_ID and TEAM_ID are auto-detected from .vercel/project.json
+        if you've run 'vercel link' in your project. Run '$0 setup' for help.
 
 CSV FORMAT:
   ip,vendor_name,notes
@@ -887,14 +1247,23 @@ CSV FORMAT:
   5.6.7.0/24,Partner Inc,API integration
 
 EXAMPLES:
-  # Preview changes (dry run)
-  DRY_RUN=true PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  # First time setup
+  cd /path/to/your/vercel/project
+  vercel link                                    # Creates .vercel/project.json
+  export VERCEL_TOKEN="your-token"               # Only token needed!
+  /path/to/vercel-ip-allowlist.sh apply vendor-ips.csv
 
-  # Apply allowlist rule
+  # Preview changes (dry run)
+  DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+  # Apply allowlist rule (auto-detects project from .vercel/project.json)
+  ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+  # Or specify project explicitly
   PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
   # Show current configuration
-  PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh show
+  ./vercel-ip-allowlist.sh show
 
   # Disable rule temporarily
   PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh disable
@@ -903,7 +1272,7 @@ EXAMPLES:
   PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh remove
 
   # Scope to specific hostname
-  HOSTNAME="api.crocs.com" PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  RULE_HOSTNAME="api.crocs.com" PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
 BEHAVIOR COMPARISON:
   Bypass Rules:        Whitelisted IPs skip WAF, ALL traffic reaches app
@@ -928,12 +1297,6 @@ main() {
     exit 1
   fi
   
-  # Check token
-  if [ -z "${VERCEL_TOKEN:-}" ]; then
-    log_error "VERCEL_TOKEN environment variable is not set"
-    exit 1
-  fi
-  
   if [ $# -eq 0 ]; then
     show_usage
     exit 1
@@ -942,6 +1305,41 @@ main() {
   local command="$1"
   shift
   
+  # Setup command doesn't require token
+  if [ "$command" = "setup" ]; then
+    cmd_setup "$@"
+    exit 0
+  fi
+  
+  # Help doesn't require anything
+  if [ "$command" = "--help" ] || [ "$command" = "-h" ]; then
+    show_usage
+    exit 0
+  fi
+  
+  # Auto-detect PROJECT_ID and TEAM_ID from .vercel/project.json
+  auto_detect_vercel_config "$(pwd)" 2>/dev/null || true
+  
+  # Check token for all other commands
+  if [ -z "${VERCEL_TOKEN:-}" ]; then
+    log_error "VERCEL_TOKEN environment variable is not set"
+    echo ""
+    echo "Create a token at: https://vercel.com/account/tokens"
+    echo "Required scopes: read:project, write:project"
+    echo ""
+    echo "Run './vercel-ip-allowlist.sh setup' for more help."
+    exit 1
+  fi
+  
+  # Validate token once for all commands
+  if ! validate_token; then
+    exit 1
+  fi
+  
+  # Resolve team slug from team ID (some API endpoints prefer slug)
+  resolve_team_slug
+  echo ""
+  
   case "$command" in
     apply)
       if [ -z "${1:-}" ]; then
@@ -949,42 +1347,19 @@ main() {
         echo "Usage: $0 apply <csv_file>"
         exit 1
       fi
-      
-      # Validate token before proceeding
-      if ! validate_token; then
-        exit 1
-      fi
-      echo ""
-      
       cmd_apply "$1"
       ;;
     show)
-      if ! validate_token; then
-        exit 1
-      fi
       cmd_show
       ;;
     disable)
-      if ! validate_token; then
-        exit 1
-      fi
       cmd_disable
       ;;
     remove)
-      if ! validate_token; then
-        exit 1
-      fi
       cmd_remove
       ;;
     backup)
-      if ! validate_token; then
-        exit 1
-      fi
       cmd_backup
-      ;;
-    --help|-h)
-      show_usage
-      exit 0
       ;;
     *)
       log_error "Unknown command: $command"

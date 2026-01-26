@@ -6,11 +6,27 @@ Automation scripts to create IP allowlist rules in Vercel Firewall that **block 
 
 ### 1. Set Up Environment
 
+**Option A: Auto-detect from Vercel CLI (recommended)**
+
+If you've already linked your project with the Vercel CLI, the script auto-detects `PROJECT_ID` and `TEAM_ID`:
+
+```bash
+# In your Vercel project directory (where you ran 'vercel link')
+cd /path/to/your/vercel/project
+
+# Only the token is required - project info is auto-detected from .vercel/project.json
+export VERCEL_TOKEN="your-vercel-api-token"
+```
+
+**Option B: Manual setup**
+
 ```bash
 export VERCEL_TOKEN="your-vercel-api-token"
 export PROJECT_ID="prj_xxxxxxxxxxxx"
 export TEAM_ID="team_xxxxxxxxxxxx"  # Optional, for team projects
 ```
+
+**Need help?** Run `./vercel-ip-allowlist.sh setup` for guided setup instructions.
 
 ### 2. Create IP Whitelist CSV
 
@@ -39,6 +55,7 @@ After applying, **only IPs in your whitelist can access your project**. All othe
 
 | Command | Description |
 |---------|-------------|
+| `./vercel-ip-allowlist.sh setup` | Show environment setup instructions |
 | `./vercel-ip-allowlist.sh apply <csv>` | Create/update allowlist rule |
 | `./vercel-ip-allowlist.sh show` | Show current allowlist configuration |
 | `./vercel-ip-allowlist.sh disable` | Disable rule (allows all traffic temporarily) |
@@ -91,14 +108,16 @@ This tool creates a **single custom firewall rule** that:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VERCEL_TOKEN` | Yes | Vercel API token with read:project, write:project scopes |
-| `PROJECT_ID` | Yes | Project ID |
-| `TEAM_ID` | No | Team ID if project is in a team |
+| `PROJECT_ID` | Auto | Auto-detected from `.vercel/project.json`, or set manually |
+| `TEAM_ID` | Auto | Auto-detected from `.vercel/project.json`, or set manually |
 | `TEAM_SLUG` | No | Team slug (alternative to TEAM_ID) |
-| `HOSTNAME` | No | Scope rule to specific hostname (e.g., "api.crocs.com") |
+| `RULE_HOSTNAME` | No | Scope rule to specific hostname (e.g., "api.crocs.com") |
 | `DRY_RUN` | No | Set to "true" for preview mode |
 | `AUDIT_LOG` | No | Path to audit log file |
 | `DEBUG` | No | Set to "true" for verbose output |
 | `BACKUP_DIR` | No | Backup directory (default: ./backups) |
+
+> **Note:** If you've run `vercel link` in your project, `PROJECT_ID` and `TEAM_ID` are automatically detected from `.vercel/project.json`. You only need to set `VERCEL_TOKEN`.
 
 ## CSV Format
 
@@ -151,7 +170,7 @@ The script follows RFC 4180 CSV conventions:
 By default, the allowlist applies to your entire project. To scope to a specific hostname:
 
 ```bash
-HOSTNAME="api.crocs.com" ./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_HOSTNAME="api.crocs.com" ./vercel-ip-allowlist.sh apply vendor-ips.csv
 ```
 
 This is useful when you want to:
