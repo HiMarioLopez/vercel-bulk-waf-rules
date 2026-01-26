@@ -3,6 +3,84 @@
 import * as motion from "motion/react-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+// Theme toggle hook
+function useTheme() {
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const stored = document.documentElement.getAttribute("data-theme");
+    if (stored === "dark" || stored === "light") {
+      setTheme(stored);
+    }
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    setTheme(newTheme);
+    document.documentElement.setAttribute("data-theme", newTheme);
+    localStorage.setItem("theme", newTheme);
+  }, [theme]);
+
+  return { theme, toggleTheme, mounted };
+}
+
+function ThemeToggle() {
+  const { theme, toggleTheme, mounted } = useTheme();
+
+  if (!mounted) {
+    return <div className="theme-toggle" aria-hidden="true" />;
+  }
+
+  return (
+    <motion.button
+      type="button"
+      onClick={toggleTheme}
+      className="theme-toggle"
+      whileTap={{ scale: 0.95 }}
+      aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+      title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+    >
+      {theme === "light" ? (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="square"
+          aria-hidden="true"
+        >
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      ) : (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="square"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+      )}
+    </motion.button>
+  );
+}
+
 // Animation variants
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -190,7 +268,7 @@ function RequestPacket({
       style={{ top: `${index * 40 + 4}px` }}
     >
       <div
-        className={`border-2 border-black px-1.5 py-0.5 text-[10px] font-bold ${
+        className={`border-2 border-[var(--border-color)] px-1.5 py-0.5 text-[10px] font-bold text-black ${
           request.allowed
             ? "bg-[var(--accent-allowed)]"
             : "bg-[var(--accent-blocked)]"
@@ -210,23 +288,23 @@ function FirewallVisualization({
 }) {
   return (
     <motion.div
-      className="card flex h-full flex-col justify-center bg-white p-6"
+      className="card flex h-full flex-col justify-center p-6"
       variants={itemVariants}
     >
-      <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-zinc-500">
+      <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-[var(--muted)]">
         FIREWALL IN ACTION
       </h2>
 
       <div className="relative">
         {/* Labels */}
-        <div className="mb-2 grid grid-cols-3 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+        <div className="mb-2 grid grid-cols-3 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
           <span className="text-left">INCOMING</span>
           <span className="text-center">FIREWALL</span>
           <span className="text-right">APP</span>
         </div>
 
         {/* Visualization container */}
-        <div className="relative h-64 overflow-hidden border-[3px] border-black bg-zinc-50">
+        <div className="relative h-64 overflow-hidden border-[3px] border-[var(--border-color)] bg-[var(--card-bg-alt)]">
           {/* Request packets */}
           <div className="absolute inset-0 p-3">
             {requests.map((request, index) => (
@@ -241,7 +319,7 @@ function FirewallVisualization({
 
           {/* Firewall barrier */}
           <motion.div
-            className="absolute left-1/2 top-0 h-full w-0.5 -translate-x-1/2 bg-black"
+            className="absolute left-1/2 top-0 h-full w-0.5 -translate-x-1/2 bg-[var(--border-color)]"
             initial={{ scaleY: 0 }}
             animate={{ scaleY: 1 }}
             transition={{ duration: 0.5, delay: 0.3 }}
@@ -249,7 +327,7 @@ function FirewallVisualization({
 
           {/* Firewall box */}
           <motion.div
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-black bg-white px-2 py-1.5"
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-1.5"
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{
@@ -268,12 +346,12 @@ function FirewallVisualization({
 
           {/* App box on the right */}
           <motion.div
-            className="absolute right-1 top-1/2 -translate-y-1/2 border-2 border-black bg-[var(--accent-allowed)] px-1.5 py-3"
+            className="absolute right-1 top-1/2 -translate-y-1/2 border-2 border-[var(--border-color)] bg-[var(--accent-allowed)] px-1.5 py-3"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.7 }}
           >
-            <div className="text-[8px] font-bold uppercase tracking-wider [writing-mode:vertical-rl]">
+            <div className="text-[8px] font-bold uppercase tracking-wider text-black [writing-mode:vertical-rl]">
               APP
             </div>
           </motion.div>
@@ -282,11 +360,11 @@ function FirewallVisualization({
         {/* Legend */}
         <div className="mt-3 flex justify-center gap-4 text-[10px] font-medium">
           <div className="flex items-center gap-1.5">
-            <div className="h-2.5 w-2.5 border-2 border-black bg-[var(--accent-allowed)]" />
+            <div className="h-2.5 w-2.5 border-2 border-[var(--border-color)] bg-[var(--accent-allowed)]" />
             <span>Allowed</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="h-2.5 w-2.5 border-2 border-black bg-[var(--accent-blocked)]" />
+            <div className="h-2.5 w-2.5 border-2 border-[var(--border-color)] bg-[var(--accent-blocked)]" />
             <span>Blocked</span>
           </div>
         </div>
@@ -306,7 +384,7 @@ function AllowlistEditor({
     <div className="mt-4">
       <label
         htmlFor="allowlist"
-        className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+        className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]"
       >
         EDIT ALLOWLIST (one per line, # for comments)
       </label>
@@ -314,7 +392,7 @@ function AllowlistEditor({
         id="allowlist"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-28 w-full resize-none border-2 border-black bg-zinc-50 p-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[var(--accent-allowed)]"
+        className="h-28 w-full resize-none border-2 border-[var(--border-color)] bg-[var(--card-bg-alt)] p-2 font-mono text-xs text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-allowed)]"
         spellCheck={false}
         placeholder="Enter IPs or CIDR ranges..."
       />
@@ -376,20 +454,23 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-[var(--background)]">
       {/* Header */}
-      <header className="border-b-[3px] border-black bg-white">
+      <header className="border-b-[3px] border-[var(--border-color)] bg-[var(--card-bg)]">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <h1 className="text-lg font-bold uppercase tracking-wider">
             VERCEL IP ALLOWLIST
           </h1>
-          <a
-            href="https://vercel.com/docs/vercel-firewall"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn px-4 py-2 text-sm"
-            aria-label="View Vercel Firewall docs"
-          >
-            DOCS ↗
-          </a>
+          <div className="flex items-center gap-3">
+            <a
+              href="https://vercel.com/docs/vercel-firewall"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn px-4 py-2 text-sm"
+              aria-label="View Vercel Firewall docs"
+            >
+              DOCS ↗
+            </a>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -404,17 +485,14 @@ export default function Home() {
           {/* Left Column - IP Info & Allowlist Editor */}
           <div className="flex flex-col gap-6">
             {/* IP Display Card */}
-            <motion.section
-              className="card bg-white p-6"
-              variants={itemVariants}
-            >
-              <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-zinc-500">
+            <motion.section className="card p-6" variants={itemVariants}>
+              <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-[var(--muted)]">
                 YOUR IP ADDRESS
               </h2>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 {loading ? (
                   <motion.div
-                    className="h-10 w-48 bg-zinc-200"
+                    className="h-10 w-48 bg-[var(--card-bg-alt)]"
                     animate={{ opacity: [0.5, 1, 0.5] }}
                     transition={{
                       repeat: Number.POSITIVE_INFINITY,
@@ -435,8 +513,8 @@ export default function Home() {
               </div>
 
               {/* Status inline */}
-              <div className="mt-4 flex items-center justify-between border-t-2 border-dashed border-zinc-200 pt-4">
-                <span className="text-xs font-medium uppercase text-zinc-400">
+              <div className="mt-4 flex items-center justify-between border-t-2 border-dashed border-[var(--muted-border)] pt-4">
+                <span className="text-xs font-medium uppercase text-[var(--muted)]">
                   Status
                 </span>
                 {!loading && <StatusIndicator isAllowed={isUserAllowed} />}
@@ -444,17 +522,18 @@ export default function Home() {
             </motion.section>
 
             {/* Allowlist Editor Card */}
-            <motion.section
-              className="card flex-1 bg-white p-6"
-              variants={itemVariants}
-            >
+            <motion.section className="card flex-1 p-6" variants={itemVariants}>
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--muted)]">
                   IP ALLOWLIST
                 </h2>
                 <div className="flex gap-3 text-[10px] font-bold">
-                  <span className="text-green-600">{stats.allowed} PASS</span>
-                  <span className="text-red-500">{stats.blocked} BLOCK</span>
+                  <span className="text-[var(--stats-pass)]">
+                    {stats.allowed} PASS
+                  </span>
+                  <span className="text-[var(--stats-block)]">
+                    {stats.blocked} BLOCK
+                  </span>
                 </div>
               </div>
 
@@ -463,7 +542,7 @@ export default function Home() {
                 onChange={handleAllowlistChange}
               />
 
-              <p className="mt-3 text-[10px] text-zinc-400">
+              <p className="mt-3 text-[10px] text-[var(--muted)]">
                 Edit the allowlist above and watch the firewall animation update
                 in real-time. Add your IP to allow yourself!
               </p>
@@ -476,15 +555,15 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t-[3px] border-black bg-white">
-        <div className="mx-auto max-w-5xl px-6 py-6 text-center text-sm text-zinc-500">
+      <footer className="border-t-[3px] border-[var(--border-color)] bg-[var(--card-bg)]">
+        <div className="mx-auto max-w-5xl px-6 py-6 text-center text-sm text-[var(--muted)]">
           <p>
             Built with{" "}
             <a
               href="https://nextjs.org"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-black underline"
+              className="font-medium text-[var(--foreground)] underline"
             >
               Next.js
             </a>{" "}
@@ -493,7 +572,7 @@ export default function Home() {
               href="https://vercel.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-black underline"
+              className="font-medium text-[var(--foreground)] underline"
             >
               Vercel
             </a>
