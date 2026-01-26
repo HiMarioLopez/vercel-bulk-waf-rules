@@ -1,0 +1,31 @@
+# Backup files containing sensitive IP data
+backups/
+*.backup.json
+
+# Environment files with tokens
+.env
+.env.*
+*.env
+
+# Log files
+*.log
+audit.log
+
+# Vercel token files
+.vercel-token
+vercel-token.txt
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Temporary files
+*.tmp
+*.temp

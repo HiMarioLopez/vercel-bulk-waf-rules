@@ -1,0 +1,13 @@
+# Vendor IP Allowlist Template
+# Format: ip,vendor_name,notes
+# 
+# Columns:
+#   ip          - IPv4 address or CIDR range (required)
+#   vendor_name - Name of the vendor/partner (required, used in notes)
+#   notes       - Additional notes (optional)
+#
+# Examples:
+1.2.3.4,Acme Corp,Payment gateway
+5.6.7.0/24,Partner Inc,API integration
+10.20.30.40,Analytics Co,Tracking pixels
+192.168.1.100,Test Vendor,Development testing

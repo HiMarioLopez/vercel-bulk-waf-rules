@@ -1,0 +1,205 @@
+# GitHub Actions workflow for Vercel IP Allowlist automation
+#
+# This workflow:
+# 1. Validates IP configurations in PRs (dry run mode)
+# 2. Applies allowlist rules on merge to main
+#
+# IMPORTANT: This creates rules that BLOCK all traffic except whitelisted IPs!
+#
+# Required Secrets:
+#   VERCEL_TOKEN: Vercel API token with read:project and write:project scopes
+#
+# Required Variables:
+#   VERCEL_PROJECT_ID: Your Vercel project ID (prj_xxx)
+#   VERCEL_TEAM_ID: (Optional) Team ID if project belongs to a team
+
+name: Vercel IP Allowlist
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vendor-ips.csv'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'vendor-ips.csv'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no changes)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      action:
+        description: 'Action to perform'
+        required: false
+        default: 'apply'
+        type: choice
+        options:
+          - 'apply'
+          - 'show'
+          - 'disable'
+
+env:
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+  TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+
+jobs:
+  validate:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+
+      - name: Validate CSV and token
+        run: |
+          chmod +x ./vercel-ip-allowlist.sh
+          DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+  apply:
+    name: Apply Allowlist Rules
+    runs-on: ubuntu-latest
+    needs: validate
+    # Only run on push to main (not PRs) or manual trigger with dry_run=false
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'false' && github.event.inputs.action == 'apply')
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+
+      - name: Create backup before changes
+        run: |
+          chmod +x ./rollback.sh
+          ./rollback.sh backup || true
+        env:
+          BACKUP_DIR: ./backups
+
+      - name: Apply IP allowlist rules
+        run: |
+          chmod +x ./vercel-ip-allowlist.sh
+          # Run with explicit 'yes' confirmation via stdin
+          echo "yes" | ./vercel-ip-allowlist.sh apply vendor-ips.csv
+        env:
+          AUDIT_LOG: ./audit.log
+
+      - name: Upload audit log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit-log
+          path: audit.log
+          retention-days: 90
+
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firewall-backup
+          path: backups/
+          retention-days: 90
+
+  dry-run:
+    name: Dry Run (Preview)
+    runs-on: ubuntu-latest
+    needs: validate
+    # Run on PRs or manual trigger with dry_run=true
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+
+      - name: Preview changes (dry run)
+        run: |
+          chmod +x ./vercel-ip-allowlist.sh
+          DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## IP Allowlist Dry Run Complete\n\n' +
+                    '⚠️ **Warning:** This will create rules that BLOCK all traffic except whitelisted IPs.\n\n' +
+                    'The CSV file has been validated and the changes have been previewed.\n\n' +
+                    'Merge this PR to apply the allowlist rules.'
+            });
+
+  show-status:
+    name: Show Current Status
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'show'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+
+      - name: Show current allowlist
+        run: |
+          chmod +x ./vercel-ip-allowlist.sh
+          ./vercel-ip-allowlist.sh show
+
+  disable-rule:
+    name: Disable Allowlist Rule
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'disable' && github.event.inputs.dry_run == 'false'
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+
+      - name: Create backup before disabling
+        run: |
+          chmod +x ./rollback.sh
+          ./rollback.sh backup
+        env:
+          BACKUP_DIR: ./backups
+
+      - name: Disable allowlist rule
+        run: |
+          chmod +x ./vercel-ip-allowlist.sh
+          echo "yes" | ./vercel-ip-allowlist.sh disable
+
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: firewall-backup-pre-disable
+          path: backups/
+          retention-days: 90
