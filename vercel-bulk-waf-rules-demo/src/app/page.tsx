@@ -457,7 +457,7 @@ export default function Home() {
       <header className="border-b-[3px] border-[var(--border-color)] bg-[var(--card-bg)]">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <h1 className="text-lg font-bold uppercase tracking-wider">
-            VERCEL IP ALLOWLIST
+            VERCEL BULK WAF RULES
           </h1>
           <div className="flex items-center gap-3">
             <a

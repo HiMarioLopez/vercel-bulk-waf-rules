@@ -9,13 +9,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vercel IP Allowlist",
+  title: "Vercel Bulk WAF Rules",
   description:
-    "Protect your Vercel deployments with IP-based access control. Only allow trusted IPs to access your apps.",
+    "Bulk manage Vercel Firewall rules with IP-based access control. Easily allow or block trusted IPs to protect your apps.",
   openGraph: {
-    title: "Vercel IP Allowlist",
+    title: "Vercel Bulk WAF Rules",
     description:
-      "Protect your Vercel deployments with IP-based access control.",
+      "Bulk manage Vercel Firewall rules with IP-based access control.",
     type: "website",
   },
 };
