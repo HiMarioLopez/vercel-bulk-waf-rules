@@ -737,11 +737,11 @@ get_firewall_config() {
 
 # Find our managed allowlist rule(s) in the config
 # Returns all matching rules (including chunked "Part X/Y" rules and duplicates)
+# If RULE_NAME is set, searches for that specific name pattern
+# If RULE_NAME is not set, searches for ALL managed rules (both bypass and allowlist)
 find_allowlist_rules() {
   local config="$1"
   local rules=""
-  
-  log_debug "Searching for rules starting with name: $RULE_NAME"
   
   # Handle empty or invalid config
   if [ -z "$config" ] || [ "$config" = "{}" ] || [ "$config" = "null" ]; then
@@ -750,23 +750,60 @@ find_allowlist_rules() {
     return 0
   fi
   
-  # Match rules that exactly match our name OR start with our name (for "Part X/Y" suffix)
-  # Structure 1: Nested under .active.rules (most common from API)
-  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.active.rules[]? | select(.name == $name or (.name | startswith($name + " (Part")))] // []' 2>/dev/null) || rules="[]"
+  # Determine search pattern(s)
+  local bypass_name="IP Bypass - Auto-managed"
+  local allowlist_name="IP Allowlist - Auto-managed"
   
-  if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
-    log_debug "Found rules in .active.rules: $rules"
-    echo "$rules"
-    return 0
-  fi
-  
-  # Structure 2: Direct .rules array
-  rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.rules[]? | select(.name == $name or (.name | startswith($name + " (Part")))] // []' 2>/dev/null) || rules="[]"
-  
-  if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
-    log_debug "Found rules in .rules: $rules"
-    echo "$rules"
-    return 0
+  if [ -n "$RULE_NAME" ]; then
+    # Mode is configured - search for specific rule type
+    log_debug "Searching for rules starting with name: $RULE_NAME"
+    
+    # Structure 1: Nested under .active.rules (most common from API)
+    rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.active.rules[]? | select(.name == $name or (.name | startswith($name + " (Part")))] // []' 2>/dev/null) || rules="[]"
+    
+    if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
+      log_debug "Found rules in .active.rules: $rules"
+      echo "$rules"
+      return 0
+    fi
+    
+    # Structure 2: Direct .rules array
+    rules=$(echo "$config" | jq -c --arg name "$RULE_NAME" '[.rules[]? | select(.name == $name or (.name | startswith($name + " (Part")))] // []' 2>/dev/null) || rules="[]"
+    
+    if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
+      log_debug "Found rules in .rules: $rules"
+      echo "$rules"
+      return 0
+    fi
+  else
+    # No mode configured - search for ALL managed rules (both bypass and allowlist)
+    log_debug "Searching for all managed rules (bypass and allowlist)"
+    
+    # Structure 1: Nested under .active.rules (most common from API)
+    rules=$(echo "$config" | jq -c --arg bypass "$bypass_name" --arg allowlist "$allowlist_name" '
+      [.active.rules[]? | select(
+        .name == $bypass or (.name | startswith($bypass + " (Part")) or
+        .name == $allowlist or (.name | startswith($allowlist + " (Part"))
+      )] // []' 2>/dev/null) || rules="[]"
+    
+    if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
+      log_debug "Found rules in .active.rules: $rules"
+      echo "$rules"
+      return 0
+    fi
+    
+    # Structure 2: Direct .rules array
+    rules=$(echo "$config" | jq -c --arg bypass "$bypass_name" --arg allowlist "$allowlist_name" '
+      [.rules[]? | select(
+        .name == $bypass or (.name | startswith($bypass + " (Part")) or
+        .name == $allowlist or (.name | startswith($allowlist + " (Part"))
+      )] // []' 2>/dev/null) || rules="[]"
+    
+    if [ -n "$rules" ] && [ "$rules" != "[]" ] && [ "$rules" != "null" ]; then
+      log_debug "Found rules in .rules: $rules"
+      echo "$rules"
+      return 0
+    fi
   fi
   
   log_debug "No matching rules found"
@@ -1447,7 +1484,7 @@ cmd_apply() {
 cmd_show() {
   local project_id="${PROJECT_ID:?PROJECT_ID is required}"
   
-  log_info "Fetching allowlist rule for project $project_id..."
+  log_info "Fetching WAF rules for project $project_id..."
   
   local config
   config=$(get_firewall_config "$project_id")
@@ -1455,48 +1492,75 @@ cmd_show() {
     exit 1
   fi
   
-  local rule
-  rule=$(find_allowlist_rule "$config" || echo "")
+  local all_rules
+  all_rules=$(find_allowlist_rules "$config")
+  local rule_count
+  rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
   
   echo ""
   echo "=============================================="
-  echo "  IP Allowlist for $project_id"
+  echo "  WAF Rules for $project_id"
   echo "=============================================="
   echo ""
   
-  if [ -z "$rule" ]; then
-    echo "No allowlist rule configured."
+  if [ "$rule_count" -eq 0 ]; then
+    echo "No auto-managed WAF rules found."
     echo ""
     echo "Use './vercel-bulk-waf-rules.sh apply vendor-ips.csv' to create one."
   else
-    local rule_id
-    rule_id=$(echo "$rule" | jq -r '.id')
-    local active
-    active=$(echo "$rule" | jq -r '.active')
-    local ips
-    ips=$(echo "$rule" | jq '.conditionGroup[0].conditions[] | select(.type == "ip_address") | .value')
-    local ip_count
-    ip_count=$(echo "$ips" | jq 'length')
-    local hostname
-    hostname=$(echo "$rule" | jq -r '.conditionGroup[0].conditions[] | select(.type == "host") | .value // empty')
-    
-    echo "Rule ID:     $rule_id"
-    echo "Status:      $([ "$active" = "true" ] && echo "ACTIVE" || echo "DISABLED")"
-    echo "IP Count:    $ip_count"
-    echo "Scope:       ${hostname:-project-wide}"
+    echo "Found $rule_count auto-managed rule(s):"
     echo ""
-    echo "Whitelisted IPs:"
-    echo "$ips" | jq -r '.[]' | while read -r ip; do
-      echo "  - $ip"
+    
+    # Iterate through each rule
+    echo "$all_rules" | jq -c '.[]' | while read -r rule; do
+      local rule_id
+      rule_id=$(echo "$rule" | jq -r '.id')
+      local rule_name
+      rule_name=$(echo "$rule" | jq -r '.name')
+      local active
+      active=$(echo "$rule" | jq -r '.active')
+      local ips
+      ips=$(echo "$rule" | jq '.conditionGroup[0].conditions[] | select(.type == "ip_address") | .value' 2>/dev/null)
+      local ip_count
+      ip_count=$(echo "$ips" | jq 'length' 2>/dev/null || echo "0")
+      local hostname
+      hostname=$(echo "$rule" | jq -r '.conditionGroup[0].conditions[] | select(.type == "host") | .value // empty' 2>/dev/null)
+      local action
+      action=$(echo "$rule" | jq -r '.action.mitigate.action // "unknown"' 2>/dev/null)
+      
+      # Determine rule type from name
+      local rule_type="unknown"
+      if [[ "$rule_name" == *"Bypass"* ]]; then
+        rule_type="bypass"
+      elif [[ "$rule_name" == *"Allowlist"* ]]; then
+        rule_type="allowlist (deny others)"
+      fi
+      
+      echo "----------------------------------------------"
+      echo "Rule:        $rule_name"
+      echo "ID:          $rule_id"
+      echo "Type:        $rule_type"
+      echo "Status:      $([ "$active" = "true" ] && echo "ACTIVE" || echo "DISABLED")"
+      echo "IP Count:    $ip_count"
+      echo "Scope:       ${hostname:-project-wide}"
+      echo ""
+      echo "IPs:"
+      if [ -n "$ips" ] && [ "$ips" != "null" ]; then
+        echo "$ips" | jq -r '.[]' 2>/dev/null | while read -r ip; do
+          echo "  - $ip"
+        done
+      else
+        echo "  (none)"
+      fi
+      echo ""
     done
   fi
-  echo ""
 }
 
 cmd_disable() {
   local project_id="${PROJECT_ID:?PROJECT_ID is required}"
   
-  log_info "Fetching allowlist rule for project $project_id..."
+  log_info "Fetching WAF rules for project $project_id..."
   
   local config
   config=$(get_firewall_config "$project_id")
@@ -1504,27 +1568,34 @@ cmd_disable() {
     exit 1
   fi
   
-  local rule
-  rule=$(find_allowlist_rule "$config" || echo "")
+  local all_rules
+  all_rules=$(find_allowlist_rules "$config")
+  local rule_count
+  rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
   
-  if [ -z "$rule" ]; then
-    log_error "No allowlist rule found"
+  if [ "$rule_count" -eq 0 ]; then
+    log_error "No auto-managed WAF rules found"
     exit 1
   fi
   
-  local rule_id
-  rule_id=$(echo "$rule" | jq -r '.id')
-  local active
-  active=$(echo "$rule" | jq -r '.active')
+  # Filter to only active rules
+  local active_rules
+  active_rules=$(echo "$all_rules" | jq '[.[] | select(.active == true)]')
+  local active_count
+  active_count=$(echo "$active_rules" | jq 'length' 2>/dev/null || echo "0")
   
-  if [ "$active" = "false" ]; then
-    log_info "Rule is already disabled"
+  if [ "$active_count" -eq 0 ]; then
+    log_info "All $rule_count rule(s) are already disabled"
     exit 0
   fi
   
   echo ""
-  log_warn "This will DISABLE the allowlist rule."
-  log_warn "All traffic will be allowed until the rule is re-enabled."
+  echo "Found $active_count active rule(s) to disable:"
+  echo ""
+  echo "$active_rules" | jq -r '.[] | "  - \(.name) (\(.id))"'
+  echo ""
+  log_warn "This will DISABLE $active_count rule(s)."
+  log_warn "Traffic restrictions will be lifted until rules are re-enabled."
   echo ""
   read -p "Type 'yes' to confirm: " CONFIRM
   if [ "$CONFIRM" != "yes" ]; then
@@ -1532,19 +1603,25 @@ cmd_disable() {
     exit 1
   fi
   
-  if disable_allowlist_rule "$project_id" "$rule_id"; then
-    log_info "Allowlist rule disabled successfully"
-    audit_log "ALLOWLIST_DISABLED" "rule_id=$rule_id"
-  else
-    log_error "Failed to disable rule"
-    exit 1
-  fi
+  local success_count=0
+  for rule_id in $(echo "$active_rules" | jq -r '.[].id'); do
+    if disable_allowlist_rule "$project_id" "$rule_id"; then
+      log_info "Disabled rule: $rule_id"
+      audit_log "RULE_DISABLED" "rule_id=$rule_id"
+      ((success_count++))
+    else
+      log_error "Failed to disable rule: $rule_id"
+    fi
+    sleep 1
+  done
+  
+  log_info "Disabled $success_count of $active_count rule(s)"
 }
 
 cmd_remove() {
   local project_id="${PROJECT_ID:?PROJECT_ID is required}"
   
-  log_info "Fetching allowlist rule for project $project_id..."
+  log_info "Fetching WAF rules for project $project_id..."
   
   local config
   config=$(get_firewall_config "$project_id")
@@ -1552,20 +1629,41 @@ cmd_remove() {
     exit 1
   fi
   
-  local rule
-  rule=$(find_allowlist_rule "$config" || echo "")
+  local all_rules
+  all_rules=$(find_allowlist_rules "$config")
+  local rule_count
+  rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
   
-  if [ -z "$rule" ]; then
-    log_error "No allowlist rule found"
+  if [ "$rule_count" -eq 0 ]; then
+    log_error "No auto-managed WAF rules found"
     exit 1
   fi
   
+  # If multiple rules, suggest using purge instead
+  if [ "$rule_count" -gt 1 ]; then
+    echo ""
+    echo "Found $rule_count auto-managed rule(s):"
+    echo ""
+    echo "$all_rules" | jq -r '.[] | "  - \(.name) (\(.id))"'
+    echo ""
+    log_warn "Multiple rules found. Use 'purge' to remove all, or set RULE_MODE to target specific type."
+    log_info "Example: RULE_MODE=bypass ./vercel-bulk-waf-rules.sh remove"
+    exit 1
+  fi
+  
+  local rule
+  rule=$(echo "$all_rules" | jq -c '.[0]')
   local rule_id
   rule_id=$(echo "$rule" | jq -r '.id')
+  local rule_name
+  rule_name=$(echo "$rule" | jq -r '.name')
   
   echo ""
-  log_warn "This will PERMANENTLY DELETE the allowlist rule."
-  log_warn "All traffic will be allowed after deletion."
+  echo "Found rule: $rule_name"
+  echo "ID: $rule_id"
+  echo ""
+  log_warn "This will PERMANENTLY DELETE this rule."
+  log_warn "Traffic restrictions will be lifted after deletion."
   echo ""
   read -p "Type 'DELETE' to confirm: " CONFIRM
   if [ "$CONFIRM" != "DELETE" ]; then
@@ -1574,8 +1672,8 @@ cmd_remove() {
   fi
   
   if remove_allowlist_rule "$project_id" "$rule_id"; then
-    log_info "Allowlist rule removed successfully"
-    audit_log "ALLOWLIST_REMOVED" "rule_id=$rule_id"
+    log_info "Rule removed successfully: $rule_name"
+    audit_log "RULE_REMOVED" "rule_id=$rule_id rule_name=$rule_name"
   else
     log_error "Failed to remove rule"
     exit 1
@@ -1606,8 +1704,8 @@ cmd_purge() {
   rule_count=$(echo "$all_rules" | jq 'length' 2>/dev/null || echo "0")
   
   if [ "$rule_count" -eq 0 ]; then
-    log_info "No auto-managed allowlist rules found."
-    log_info "Only rules with name starting with '$RULE_NAME' would be removed."
+    log_info "No auto-managed WAF rules found."
+    log_info "Only rules with names starting with 'IP Bypass - Auto-managed' or 'IP Allowlist - Auto-managed' would be removed."
     exit 0
   fi
   
@@ -1624,7 +1722,7 @@ cmd_purge() {
   
   echo ""
   log_warn "This will PERMANENTLY DELETE all $rule_count rule(s) listed above."
-  log_warn "Only rules with names starting with '$RULE_NAME' will be removed."
+  log_warn "Only auto-managed rules (IP Bypass/Allowlist) will be removed."
   log_warn "Pre-existing rules with other names are NOT affected."
   echo ""
   log_info "Options: delay=${delay}s, retries=${max_retries}, disable_first=${disable_first}, reverse=${reverse_order}"
@@ -1993,7 +2091,7 @@ ENVIRONMENT VARIABLES:
   PROJECT_ID     (auto)     Auto-detected from .vercel/project.json, or set manually
   TEAM_ID        (auto)     Auto-detected from .vercel/project.json, or set manually
   TEAM_SLUG      (optional) Team slug (alternative to TEAM_ID)
-  RULE_MODE      (optional) "deny" (default) or "bypass" - see modes above
+  RULE_MODE      (optional) "deny" (default) or "bypass" - only needed for 'apply'
   RULE_HOSTNAME  (optional) Hostname pattern for scoped rules (e.g., "api.example.com")
   DRY_RUN        (optional) Set to "true" for preview mode
   AUDIT_LOG      (optional) Path to audit log file
@@ -2153,11 +2251,10 @@ main() {
   resolve_team_slug
   echo ""
   
-  # Configure rule mode (interactive prompt if needed)
-  configure_rule_mode
-  
   case "$command" in
     apply)
+      # Only apply needs rule mode selection (creates/updates rules)
+      configure_rule_mode
       if [ -z "${1:-}" ]; then
         log_error "CSV file required"
         echo "Usage: $0 apply <csv_file>"
