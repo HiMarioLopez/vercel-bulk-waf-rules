@@ -555,6 +555,7 @@ DRY_RUN=true ./cloudflare-export.sh --account abc123def456
 ```
 
 **Debug mode shows:**
+
 - Full API response bodies
 - HTTP status codes
 - Rate limit headers
@@ -562,6 +563,7 @@ DRY_RUN=true ./cloudflare-export.sh --account abc123def456
 - Pagination progress
 
 **Audit log records:**
+
 - Timestamp of each operation
 - User who ran the script
 - Success/failure status
@@ -599,6 +601,7 @@ The script includes robust error handling:
 1. **Enable debug mode**: `DEBUG=true ./cloudflare-export.sh --account xxx`
 2. **Check audit log**: `AUDIT_LOG="./debug.log" ./cloudflare-export.sh --account xxx`
 3. **Test token manually**:
+
    ```bash
    curl -s "https://api.cloudflare.com/client/v4/user/tokens/verify" \
      -H "Authorization: Bearer $CF_API_TOKEN" | jq
