@@ -353,6 +353,10 @@ The `cloudflare-export.sh` script exports IP addresses from Cloudflare's IP Acce
 - **No UI Export**: Cloudflare doesn't provide a UI option to export IP Access Rules — the API is the only way
 - **Handles Pagination**: Automatically fetches all pages for large IP lists (600+ IPs)
 - **Vercel-Compatible Output**: Exports to CSV format that works directly with `vercel-ip-allowlist.sh`
+- **Robust Error Handling**: Automatic retry with exponential backoff, rate limit handling
+- **Debug Mode**: Verbose output for troubleshooting with `DEBUG=true`
+- **Audit Logging**: Track all operations with `AUDIT_LOG` for compliance
+- **Dry Run Mode**: Preview without making changes with `DRY_RUN=true`
 
 ### Prerequisites
 
@@ -360,6 +364,7 @@ The `cloudflare-export.sh` script exports IP addresses from Cloudflare's IP Acce
 
 - `curl` - for API requests
 - `jq` - for JSON parsing
+- `bc` - for rate limiting calculations (optional, falls back to 1s delays)
 
 **Cloudflare API Token:**
 
@@ -484,6 +489,23 @@ All endpoints use the base URL: `https://api.cloudflare.com/client/v4/`
 | `CF_API_TOKEN` | Yes | - | Cloudflare API token |
 | `OUTPUT_FILE` | No | `cloudflare_ips.csv` | Output CSV file path |
 | `MODE_FILTER` | No | `whitelist` | Filter by mode: `whitelist`, `block`, `challenge`, or empty for all |
+| `DRY_RUN` | No | `false` | Set to `true` to preview without making changes |
+| `DEBUG` | No | `false` | Set to `true` for verbose debug output |
+| `AUDIT_LOG` | No | - | Path to audit log file for tracking operations |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Missing dependencies (curl, jq) |
+| 2 | Missing CF_API_TOKEN |
+| 3 | Invalid or expired token |
+| 4 | API error (non-retryable) |
+| 5 | Rate limited (after max retries) |
+| 6 | Invalid arguments |
+| 7 | File I/O error |
+| 8 | Network error |
 
 ### Example: Complete Migration Workflow
 
@@ -505,14 +527,73 @@ DRY_RUN=true ./vercel-ip-allowlist.sh apply cloudflare_ips.csv
 ./vercel-ip-allowlist.sh apply cloudflare_ips.csv
 ```
 
+### Debugging Cloudflare Export
+
+The script includes comprehensive debugging capabilities for troubleshooting:
+
+```bash
+# Enable debug mode for verbose output
+DEBUG=true ./cloudflare-export.sh --account abc123def456
+
+# Enable audit logging to track all operations
+AUDIT_LOG="./cf-export.log" ./cloudflare-export.sh --account abc123def456
+
+# Combine both for full visibility
+DEBUG=true AUDIT_LOG="./cf-export.log" ./cloudflare-export.sh --account abc123def456
+
+# Dry run to preview without writing files
+DRY_RUN=true ./cloudflare-export.sh --account abc123def456
+```
+
+**Debug mode shows:**
+- Full API response bodies
+- HTTP status codes
+- Rate limit headers
+- Token verification details
+- Pagination progress
+
+**Audit log records:**
+- Timestamp of each operation
+- User who ran the script
+- Success/failure status
+- Error codes and messages
+- Export statistics
+
+### Error Handling
+
+The script includes robust error handling:
+
+- **Automatic Retries**: Retries failed requests up to 3 times with exponential backoff
+- **Rate Limit Handling**: Automatically waits when hitting Cloudflare's rate limits (1,200 req/5min)
+- **Token Verification**: Validates token before starting export
+- **TLS Security**: All API calls use verified TLS 1.2+ connections
+- **Detailed Error Messages**: Displays Cloudflare error codes and messages for debugging
+
 ### Troubleshooting Cloudflare Export
 
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `CF_API_TOKEN environment variable is not set` | Token not exported | Run `export CF_API_TOKEN="your-token"` |
+| `CF_API_TOKEN appears malformed` | Token has invalid characters | Check token was copied correctly |
+| `Token verification failed (HTTP 400)` | Invalid token format | Create a new token at Cloudflare dashboard |
+| `Token verification failed (HTTP 401)` | Expired or invalid token | Create a new token |
+| `Token status: expired` | Token has expired | Create a new token |
 | `HTTP 403` | Insufficient permissions | Check token has "Firewall Access Rules Read" permission |
-| `HTTP 400` | Invalid account/zone ID | Verify the ID is correct |
+| `HTTP 404` | Invalid account/zone/list ID | Verify the ID is correct |
+| `HTTP 429` | Rate limited | Script auto-retries; if persistent, wait a few minutes |
+| `Network error` | Connection failed | Check internet connection and firewall settings |
 | `jq: command not found` | jq not installed | Install with `brew install jq` or `apt install jq` |
+| `Exit code 5` | Rate limited after max retries | Wait 5 minutes and try again |
+
+**Debugging Tips:**
+
+1. **Enable debug mode**: `DEBUG=true ./cloudflare-export.sh --account xxx`
+2. **Check audit log**: `AUDIT_LOG="./debug.log" ./cloudflare-export.sh --account xxx`
+3. **Test token manually**:
+   ```bash
+   curl -s "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+     -H "Authorization: Bearer $CF_API_TOKEN" | jq
+   ```
 
 ### IP Access Rules vs IP Lists
 
