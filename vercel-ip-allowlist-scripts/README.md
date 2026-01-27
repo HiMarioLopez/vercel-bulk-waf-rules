@@ -4,7 +4,7 @@ Automation scripts to create IP allowlist rules in Vercel Firewall with **two mo
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
-| **deny** (default) | Block all traffic EXCEPT from whitelisted IPs | Private apps, vendor-only access |
+| **deny** | Block all traffic EXCEPT from whitelisted IPs | Private apps, vendor-only access |
 | **bypass** | Bypass WAF/security for whitelisted IPs | Public apps with vendor integrations (webhooks, scanners, bots) |
 
 ## Quick Start
@@ -50,21 +50,37 @@ DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
 ### 4. Apply Allowlist
 
-**Deny Mode (default)** - Block all except allowlisted IPs:
+**Interactive Mode (recommended for first-time setup):**
 
 ```bash
 ./vercel-ip-allowlist.sh apply vendor-ips.csv
 ```
 
-After applying, **only IPs in your whitelist can access your project**. All other traffic is blocked.
+The script will prompt you to choose your intended behavior:
 
-**Bypass Mode** - Bypass WAF for allowlisted IPs (public apps):
+```
+Select rule mode:
+
+  1) allowlist  - Block ALL traffic except listed IPs
+                  Use for: Private apps, vendor-only access
+
+  2) bypass     - Bypass WAF for listed IPs, allow all other traffic
+                  Use for: Public apps with vendor integrations
+
+Enter choice [1-2]:
+```
+
+**Explicit Mode (for CI/CD or scripting):**
 
 ```bash
+# Deny mode - Block all except allowlisted IPs
+RULE_MODE=deny ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+# Bypass mode - Bypass WAF for allowlisted IPs
 RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
 ```
 
-After applying, **listed IPs bypass WAF/security checks**. All other traffic flows normally through security rules. Use this for vendor integrations like webhooks, security scanners, or SEO bots.
+> **Note:** In non-interactive environments (CI/CD), you must set `RULE_MODE` explicitly or the script will exit with an error.
 
 ## Commands
 
@@ -82,11 +98,13 @@ After applying, **listed IPs bypass WAF/security checks**. All other traffic flo
 This tool creates a **custom firewall rule** with behavior based on the selected mode:
 
 ### Deny Mode (default)
+
 1. Uses the `ninc` (NOT IN) operator to match IPs **not** in your whitelist
 2. Applies a `deny` action to block those IPs
 3. Rule name: `IP Allowlist - Auto-managed`
 
 ### Bypass Mode
+
 1. Uses the `inc` (IN) operator to match IPs **in** your whitelist
 2. Applies a `bypass` action to skip WAF/security checks
 3. Rule name: `IP Bypass - Auto-managed`
@@ -123,8 +141,391 @@ Both modes support updating the rule in place as your IP list changes.
 |--------|---------|
 | `vercel-ip-allowlist.sh` | Main script for IP allowlisting |
 | `rollback.sh` | Backup, restore, enable/disable allowlist rules |
-| `cloudflare-export.sh` | Export IPs from Cloudflare (useful for migration) |
+| `cloudflare-export.sh` | Export IPs from Cloudflare WAF rules (useful for migration) |
 | `vendor-ips.csv` | Template CSV file |
+
+## Vercel Credentials Setup
+
+This section explains how to get the credentials needed to run the Vercel IP allowlist scripts.
+
+### Prerequisites
+
+**Dependencies:**
+
+- `curl` - for API requests
+- `jq` - for JSON parsing
+- `bc` - for calculations (usually pre-installed)
+
+Install on macOS:
+
+```bash
+brew install jq
+```
+
+Install on Ubuntu/Debian:
+
+```bash
+sudo apt-get install jq bc
+```
+
+### Creating a Vercel API Token
+
+1. Go to [vercel.com/account/tokens](https://vercel.com/account/tokens)
+   - Make sure you're under **Personal Account** (not Teams) in the top-left dropdown
+2. Click **Create** to open the token creation modal
+3. Enter a descriptive name (e.g., "IP Allowlist Script")
+4. Click **Create Token**
+5. **Choose the scope** from the dropdown:
+   - Select your **Personal Account** for personal projects
+   - Select a **specific Team** for team projects
+6. **Copy the token immediately** — it will not be shown again
+
+```bash
+export VERCEL_TOKEN="your-token-here"
+```
+
+### Required Token Permissions
+
+Your token needs these permissions based on how you created it:
+
+| Scope | Required For | Description |
+|-------|--------------|-------------|
+| Personal Account | Personal projects | Full access to your personal projects |
+| Team Scope | Team projects | Access to projects within that team |
+
+> **Note:** Vercel tokens inherit permissions based on your account role. If you're a team member, your token can access team resources you have permission to modify.
+
+### Finding Your Project ID
+
+**Method 1: From the Vercel Dashboard**
+
+1. Go to [vercel.com/dashboard](https://vercel.com/dashboard)
+2. Click on your project
+3. Go to **Settings** → **General**
+4. Scroll down to find **Project ID** (starts with `prj_`)
+
+**Method 2: From `.vercel/project.json` (Recommended)**
+
+If you've run `vercel link` in your project directory:
+
+```bash
+cat .vercel/project.json
+```
+
+Output:
+
+```json
+{
+  "projectId": "prj_xxxxxxxxxxxxxxxxxxxx",
+  "orgId": "team_xxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+The script **automatically reads this file** if you run it from your project directory.
+
+**Method 3: From the URL**
+
+When viewing your project in the dashboard, the URL contains the project name:
+
+```
+https://vercel.com/your-team/your-project-name/settings
+```
+
+You can use the project name instead of the ID with the API.
+
+**Method 4: Via API**
+
+```bash
+# List all projects
+curl -s "https://api.vercel.com/v9/projects" \
+  -H "Authorization: Bearer $VERCEL_TOKEN" | jq '.projects[] | {id, name}'
+
+# For team projects, add teamId
+curl -s "https://api.vercel.com/v9/projects?teamId=team_xxx" \
+  -H "Authorization: Bearer $VERCEL_TOKEN" | jq '.projects[] | {id, name}'
+```
+
+### Finding Your Team ID
+
+**Method 1: From the Dashboard**
+
+1. Click your team name in the top-left dropdown
+2. Go to **Settings** → **General**
+3. Scroll down to **Team ID** (starts with `team_`)
+
+Or navigate directly to:
+
+```
+https://vercel.com/teams/your-team-name/settings
+```
+
+**Method 2: From `.vercel/project.json`**
+
+```bash
+cat .vercel/project.json | jq '.orgId'
+```
+
+The `orgId` field is your Team ID (for team projects) or your user ID (for personal projects).
+
+**Method 3: Via API**
+
+```bash
+curl -s "https://api.vercel.com/v2/teams" \
+  -H "Authorization: Bearer $VERCEL_TOKEN" | jq '.teams[] | {id, name, slug}'
+```
+
+### Quick Setup Summary
+
+**Option A: Auto-detect (Recommended)**
+
+If you've already linked your project with Vercel CLI:
+
+```bash
+cd /path/to/your/vercel/project  # Directory with .vercel/project.json
+export VERCEL_TOKEN="your-token"
+./vercel-ip-allowlist.sh apply vendor-ips.csv
+```
+
+**Option B: Manual Setup**
+
+```bash
+export VERCEL_TOKEN="your-token"
+export PROJECT_ID="prj_xxxxxxxxxxxx"
+export TEAM_ID="team_xxxxxxxxxxxx"  # Only for team projects
+./vercel-ip-allowlist.sh apply vendor-ips.csv
+```
+
+**Option C: Guided Setup**
+
+```bash
+./vercel-ip-allowlist.sh setup
+```
+
+### Verifying Your Credentials
+
+Test that your credentials work:
+
+```bash
+# Test token validity
+curl -s "https://api.vercel.com/v2/user" \
+  -H "Authorization: Bearer $VERCEL_TOKEN" | jq '{username, email}'
+
+# Test project access
+curl -s "https://api.vercel.com/v9/projects/$PROJECT_ID?teamId=$TEAM_ID" \
+  -H "Authorization: Bearer $VERCEL_TOKEN" | jq '{id, name}'
+
+# Or use the script's show command
+./vercel-ip-allowlist.sh show
+```
+
+### Troubleshooting Vercel Credentials
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `VERCEL_TOKEN environment variable is not set` | Token not exported | Run `export VERCEL_TOKEN="your-token"` |
+| `HTTP 401 Unauthorized` | Invalid or expired token | Create a new token at vercel.com/account/tokens |
+| `HTTP 403 Forbidden` | Token lacks team access | Recreate token with correct team scope |
+| `HTTP 404 Not Found` | Wrong PROJECT_ID or TEAM_ID | Verify IDs from dashboard or `.vercel/project.json` |
+| `Project not found` | Missing TEAM_ID for team project | Add `export TEAM_ID="team_xxx"` |
+
+### Token Security Best Practices
+
+- **Never commit tokens** to version control
+- **Use environment variables** or a secrets manager
+- **Scope tokens minimally** — use team-specific tokens when possible
+- **Rotate tokens regularly** — especially after team member departures
+- **Use short-lived tokens** for CI/CD when possible
+
+For CI/CD, store tokens as secrets:
+
+- **GitHub Actions**: Repository Settings → Secrets → `VERCEL_TOKEN`
+- **GitLab CI**: Settings → CI/CD → Variables → `VERCEL_TOKEN`
+- **CircleCI**: Project Settings → Environment Variables
+
+---
+
+## Cloudflare IP Export Script
+
+The `cloudflare-export.sh` script exports IP addresses from Cloudflare's IP Access Rules or IP Lists to a CSV format compatible with the Vercel allowlist script. This is particularly useful when migrating IP allowlists from Cloudflare to Vercel.
+
+### Why Use This Script?
+
+- **No UI Export**: Cloudflare doesn't provide a UI option to export IP Access Rules — the API is the only way
+- **Handles Pagination**: Automatically fetches all pages for large IP lists (600+ IPs)
+- **Vercel-Compatible Output**: Exports to CSV format that works directly with `vercel-ip-allowlist.sh`
+
+### Prerequisites
+
+**Dependencies:**
+
+- `curl` - for API requests
+- `jq` - for JSON parsing
+
+**Cloudflare API Token:**
+
+Create an API token at [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) with one of these permissions:
+
+| Export Type | Required Permission |
+|-------------|---------------------|
+| Account-level IP Access Rules | Account Firewall Access Rules Read |
+| Zone-level IP Access Rules | Zone Firewall Access Rules Read (Firewall Services Read) |
+| IP Lists | Account Rule Lists Read |
+
+### Finding Your Account ID and Zone ID
+
+**Account ID:**
+
+1. Log into Cloudflare Dashboard
+2. Click any domain
+3. Scroll down in the right sidebar to find **Account ID**
+
+Or via API:
+
+```bash
+curl -s "https://api.cloudflare.com/client/v4/accounts" \
+  -H "Authorization: Bearer $CF_API_TOKEN" | jq '.result[] | {id, name}'
+```
+
+**Zone ID:**
+
+1. Log into Cloudflare Dashboard
+2. Click the domain you want
+3. Scroll down in the right sidebar to find **Zone ID**
+
+Or via API:
+
+```bash
+curl -s "https://api.cloudflare.com/client/v4/zones" \
+  -H "Authorization: Bearer $CF_API_TOKEN" | jq '.result[] | {id, name}'
+```
+
+### Export Commands
+
+#### 1. Export Account-Level IP Access Rules
+
+Account-level rules apply to all zones in your account:
+
+```bash
+export CF_API_TOKEN="your-cloudflare-api-token"
+
+# Export all whitelisted IPs (default)
+./cloudflare-export.sh --account abc123def456
+
+# Export to a specific file
+OUTPUT_FILE="vendor_ips.csv" ./cloudflare-export.sh --account abc123def456
+
+# Export blocked IPs instead
+MODE_FILTER=block ./cloudflare-export.sh --account abc123def456
+
+# Export all modes (whitelist, block, challenge)
+MODE_FILTER="" ./cloudflare-export.sh --account abc123def456
+```
+
+#### 2. Export Zone-Level IP Access Rules
+
+Zone-level rules apply only to a specific domain:
+
+```bash
+export CF_API_TOKEN="your-cloudflare-api-token"
+
+# Export whitelisted IPs for a specific zone
+./cloudflare-export.sh --zone xyz789abc123
+
+# Export to specific file
+OUTPUT_FILE="zone_ips.csv" ./cloudflare-export.sh --zone xyz789abc123
+```
+
+#### 3. Export from IP Lists
+
+IP Lists are reusable lists that can be referenced in custom rules:
+
+```bash
+export CF_API_TOKEN="your-cloudflare-api-token"
+
+# First, list all IP Lists in your account
+./cloudflare-export.sh --all-lists abc123def456
+
+# Then export a specific list by ID
+./cloudflare-export.sh --list abc123def456 list_id_here
+
+# Export to specific file
+OUTPUT_FILE="ip_list.csv" ./cloudflare-export.sh --list abc123def456 list_id_here
+```
+
+### Output Format
+
+The script outputs CSV with these columns:
+
+```csv
+ip,notes,mode,created_on
+"192.168.1.1","Office IP","whitelist","2024-01-15T10:30:00Z"
+"10.0.0.0/8","Internal network","whitelist","2024-01-15T10:31:00Z"
+```
+
+This format is directly compatible with `vercel-ip-allowlist.sh`.
+
+### API Endpoints Used
+
+The script uses these Cloudflare API v4 endpoints:
+
+| Operation | Endpoint |
+|-----------|----------|
+| List account IP Access Rules | `GET /accounts/{account_id}/firewall/access_rules/rules` |
+| List zone IP Access Rules | `GET /zones/{zone_id}/firewall/access_rules/rules` |
+| List all IP Lists | `GET /accounts/{account_id}/rules/lists` |
+| Get IP List items | `GET /accounts/{account_id}/rules/lists/{list_id}/items` |
+
+All endpoints use the base URL: `https://api.cloudflare.com/client/v4/`
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `CF_API_TOKEN` | Yes | - | Cloudflare API token |
+| `OUTPUT_FILE` | No | `cloudflare_ips.csv` | Output CSV file path |
+| `MODE_FILTER` | No | `whitelist` | Filter by mode: `whitelist`, `block`, `challenge`, or empty for all |
+
+### Example: Complete Migration Workflow
+
+```bash
+# Step 1: Set up Cloudflare token
+export CF_API_TOKEN="your-cloudflare-token"
+
+# Step 2: Export IPs from Cloudflare
+./cloudflare-export.sh --account abc123def456
+# Creates: cloudflare_ips.csv
+
+# Step 3: Set up Vercel token (in your Vercel project directory)
+export VERCEL_TOKEN="your-vercel-token"
+
+# Step 4: Preview what will be applied
+DRY_RUN=true ./vercel-ip-allowlist.sh apply cloudflare_ips.csv
+
+# Step 5: Apply to Vercel
+./vercel-ip-allowlist.sh apply cloudflare_ips.csv
+```
+
+### Troubleshooting Cloudflare Export
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `CF_API_TOKEN environment variable is not set` | Token not exported | Run `export CF_API_TOKEN="your-token"` |
+| `HTTP 403` | Insufficient permissions | Check token has "Firewall Access Rules Read" permission |
+| `HTTP 400` | Invalid account/zone ID | Verify the ID is correct |
+| `jq: command not found` | jq not installed | Install with `brew install jq` or `apt install jq` |
+
+### IP Access Rules vs IP Lists
+
+Cloudflare has two ways to manage IP allowlists:
+
+| Feature | IP Access Rules | IP Lists |
+|---------|-----------------|----------|
+| Scope | Account or Zone level | Account level |
+| Action | Direct (whitelist/block/challenge) | Referenced in custom rules |
+| UI Location | Security → WAF → Tools | Manage Account → Configurations → Lists |
+| Best for | Simple allow/block rules | Complex rules, multiple conditions |
+
+Use `--account` or `--zone` for IP Access Rules, use `--list` for IP Lists.
 
 ## Environment Variables
 
@@ -287,14 +688,9 @@ PROJECT_ID=prj_xxx ./rollback.sh remove
 
 ## API Token Requirements
 
-Create a Vercel API token at <https://vercel.com/account/tokens> with these scopes:
+See the [Vercel Credentials Setup](#vercel-credentials-setup) section for detailed instructions on creating an API token and finding your Project ID and Team ID.
 
-| Scope | Required | Purpose |
-|-------|----------|---------|
-| `read:project` | Yes | Fetch current firewall config |
-| `write:project` | Yes | Create/update/delete rules |
-| `read:team` | For teams | Access team projects |
-| `write:team` | For teams | Modify team project rules |
+**Quick reference:** Create a token at [vercel.com/account/tokens](https://vercel.com/account/tokens) and ensure it has access to the team/account containing your project.
 
 ## IP Limits
 
