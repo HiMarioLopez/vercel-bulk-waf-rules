@@ -1,6 +1,6 @@
-# Vercel IP Allowlist - Firewall Rules for Whitelisted IPs
+# Vercel Bulk WAF Rules
 
-Automation scripts to create IP allowlist rules in Vercel Firewall with **two modes**:
+Bulk manage Vercel WAF (Web Application Firewall) rules via CSV with **two modes**:
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
@@ -11,27 +11,23 @@ Automation scripts to create IP allowlist rules in Vercel Firewall with **two mo
 
 ### 1. Set Up Environment
 
-**Option A: Auto-detect from Vercel CLI (recommended)**
-
-If you've already linked your project with the Vercel CLI, the script auto-detects `PROJECT_ID` and `TEAM_ID`:
+**Option A: Vercel CLI login (recommended for local use)**
 
 ```bash
-# In your Vercel project directory (where you ran 'vercel link')
 cd /path/to/your/vercel/project
-
-# Only the token is required - project info is auto-detected from .vercel/project.json
-export VERCEL_TOKEN="your-vercel-api-token"
+vercel link    # Creates .vercel/project.json (one-time)
+vercel login   # Authenticate (one-time)
 ```
 
-**Option B: Manual setup**
+**Option B: Token-based (required for CI/CD)**
 
 ```bash
 export VERCEL_TOKEN="your-vercel-api-token"
-export PROJECT_ID="prj_xxxxxxxxxxxx"
-export TEAM_ID="team_xxxxxxxxxxxx"  # Optional, for team projects
+export PROJECT_ID="prj_xxxxxxxxxxxx"      # Or auto-detected from .vercel/project.json
+export TEAM_ID="team_xxxxxxxxxxxx"        # Optional, for team projects
 ```
 
-**Need help?** Run `./vercel-ip-allowlist.sh setup` for guided setup instructions.
+**Need help?** Run `./vercel-bulk-waf-rules.sh setup` for guided setup instructions.
 
 ### 2. Create IP Whitelist CSV
 
@@ -45,15 +41,15 @@ ip,vendor_name,notes
 ### 3. Preview Changes (Dry Run)
 
 ```bash
-DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+DRY_RUN=true RULE_MODE=deny ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
-### 4. Apply Allowlist
+### 4. Apply Rules
 
 **Interactive Mode (recommended for first-time setup):**
 
 ```bash
-./vercel-ip-allowlist.sh apply vendor-ips.csv
+./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 The script will prompt you to choose your intended behavior:
@@ -74,10 +70,10 @@ Enter choice [1-2]:
 
 ```bash
 # Deny mode - Block all except allowlisted IPs
-RULE_MODE=deny ./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_MODE=deny ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
 # Bypass mode - Bypass WAF for allowlisted IPs
-RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 > **Note:** In non-interactive environments (CI/CD), you must set `RULE_MODE` explicitly or the script will exit with an error.
@@ -86,12 +82,14 @@ RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
 | Command | Description |
 |---------|-------------|
-| `./vercel-ip-allowlist.sh setup` | Show environment setup instructions |
-| `./vercel-ip-allowlist.sh apply <csv>` | Create/update allowlist rule |
-| `./vercel-ip-allowlist.sh show` | Show current allowlist configuration |
-| `./vercel-ip-allowlist.sh disable` | Disable rule (allows all traffic temporarily) |
-| `./vercel-ip-allowlist.sh remove` | Remove rule entirely |
-| `./vercel-ip-allowlist.sh backup` | Export current firewall config |
+| `./vercel-bulk-waf-rules.sh setup` | Show environment setup instructions |
+| `./vercel-bulk-waf-rules.sh apply <csv>` | Create/update WAF rules from CSV |
+| `./vercel-bulk-waf-rules.sh show` | Show current WAF rules |
+| `./vercel-bulk-waf-rules.sh optimize <csv>` | Optimize IPs into CIDR ranges |
+| `./vercel-bulk-waf-rules.sh disable` | Disable rule temporarily |
+| `./vercel-bulk-waf-rules.sh remove` | Remove a single rule |
+| `./vercel-bulk-waf-rules.sh purge` | Remove ALL auto-managed rules |
+| `./vercel-bulk-waf-rules.sh backup` | Export current firewall config |
 
 ## How It Works
 
@@ -139,10 +137,19 @@ Both modes support updating the rule in place as your IP list changes.
 
 | Script | Purpose |
 |--------|---------|
-| `vercel-ip-allowlist.sh` | Main script for IP allowlisting |
+| `vercel-bulk-waf-rules.sh` | Main script for bulk WAF rule management |
 | `rollback.sh` | Backup, restore, enable/disable allowlist rules |
 | `cloudflare-export.sh` | Export IPs from Cloudflare WAF rules (useful for migration) |
-| `vendor-ips.csv` | Template CSV file |
+
+### Features
+
+The script uses the [`vercel api` CLI command](https://vercel.com/changelog/introducing-the-vercel-api-cli-command) (vercel@50.5.1+) and provides:
+
+- **Bulk IP management**: Apply hundreds of IPs from CSV in one command
+- **CIDR optimization**: Automatically aggregate contiguous IPs into CIDR ranges
+- **Two auth methods**: `vercel login` for local use, `VERCEL_TOKEN` for CI/CD
+- **Chunking support**: Automatically splits large IP lists across multiple rules (75 IPs per rule limit)
+- **Dry run mode**: Preview changes before applying
 
 ## Vercel Credentials Setup
 
@@ -152,7 +159,7 @@ This section explains how to get the credentials needed to run the Vercel IP all
 
 **Dependencies:**
 
-- `curl` - for API requests
+- `vercel` CLI v50.5.1+ (or uses `npx vercel@latest` automatically)
 - `jq` - for JSON parsing
 - `bc` - for calculations (usually pre-installed)
 
@@ -160,12 +167,14 @@ Install on macOS:
 
 ```bash
 brew install jq
+npm i -g vercel  # Optional, npx works too
 ```
 
 Install on Ubuntu/Debian:
 
 ```bash
 sudo apt-get install jq bc
+npm i -g vercel  # Optional, npx works too
 ```
 
 ### Creating a Vercel API Token
@@ -283,7 +292,7 @@ If you've already linked your project with Vercel CLI:
 ```bash
 cd /path/to/your/vercel/project  # Directory with .vercel/project.json
 export VERCEL_TOKEN="your-token"
-./vercel-ip-allowlist.sh apply vendor-ips.csv
+./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 **Option B: Manual Setup**
@@ -292,13 +301,13 @@ export VERCEL_TOKEN="your-token"
 export VERCEL_TOKEN="your-token"
 export PROJECT_ID="prj_xxxxxxxxxxxx"
 export TEAM_ID="team_xxxxxxxxxxxx"  # Only for team projects
-./vercel-ip-allowlist.sh apply vendor-ips.csv
+./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 **Option C: Guided Setup**
 
 ```bash
-./vercel-ip-allowlist.sh setup
+./vercel-bulk-waf-rules.sh setup
 ```
 
 ### Verifying Your Credentials
@@ -315,7 +324,7 @@ curl -s "https://api.vercel.com/v9/projects/$PROJECT_ID?teamId=$TEAM_ID" \
   -H "Authorization: Bearer $VERCEL_TOKEN" | jq '{id, name}'
 
 # Or use the script's show command
-./vercel-ip-allowlist.sh show
+./vercel-bulk-waf-rules.sh show
 ```
 
 ### Troubleshooting Vercel Credentials
@@ -352,7 +361,7 @@ The `cloudflare-export.sh` script exports IP addresses from Cloudflare's IP Acce
 
 - **No UI Export**: Cloudflare doesn't provide a UI option to export IP Access Rules — the API is the only way
 - **Handles Pagination**: Automatically fetches all pages for large IP lists (600+ IPs)
-- **Vercel-Compatible Output**: Exports to CSV format that works directly with `vercel-ip-allowlist.sh`
+- **Vercel-Compatible Output**: Exports to CSV format that works directly with `vercel-bulk-waf-rules.sh`
 - **Robust Error Handling**: Automatic retry with exponential backoff, rate limit handling
 - **Debug Mode**: Verbose output for troubleshooting with `DEBUG=true`
 - **Audit Logging**: Track all operations with `AUDIT_LOG` for compliance
@@ -467,7 +476,7 @@ ip,notes,mode,created_on
 "10.0.0.0/8","Internal network","whitelist","2024-01-15T10:31:00Z"
 ```
 
-This format is directly compatible with `vercel-ip-allowlist.sh`.
+This format is directly compatible with `vercel-bulk-waf-rules.sh`.
 
 ### API Endpoints Used
 
@@ -521,10 +530,10 @@ export CF_API_TOKEN="your-cloudflare-token"
 export VERCEL_TOKEN="your-vercel-token"
 
 # Step 4: Preview what will be applied
-DRY_RUN=true ./vercel-ip-allowlist.sh apply cloudflare_ips.csv
+DRY_RUN=true ./vercel-bulk-waf-rules.sh apply cloudflare_ips.csv
 
 # Step 5: Apply to Vercel
-./vercel-ip-allowlist.sh apply cloudflare_ips.csv
+./vercel-bulk-waf-rules.sh apply cloudflare_ips.csv
 ```
 
 ### Debugging Cloudflare Export
@@ -634,7 +643,7 @@ The script supports two rule modes and will prompt you to select one if not spec
 When running interactively in a terminal, if `RULE_MODE` is not set, you'll see a prompt:
 
 ```
-$ ./vercel-ip-allowlist.sh apply vendor-ips.csv
+$ ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
 Select rule mode:
 
@@ -653,7 +662,7 @@ In non-interactive environments (CI/CD pipelines), `RULE_MODE` must be set expli
 
 ```bash
 # GitHub Actions, GitLab CI, etc.
-RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 If `RULE_MODE` is not set in CI/CD, the script will error with instructions.
@@ -664,10 +673,10 @@ You can always skip the prompt by setting `RULE_MODE`:
 
 ```bash
 # Allowlist mode (block all except listed IPs)
-RULE_MODE=deny ./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_MODE=deny ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
 # Bypass mode (bypass WAF for listed IPs)
-RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 ## CSV Format
@@ -721,7 +730,7 @@ The script follows RFC 4180 CSV conventions:
 By default, the allowlist applies to your entire project. To scope to a specific hostname:
 
 ```bash
-RULE_HOSTNAME="api.crocs.com" ./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_HOSTNAME="api.crocs.com" ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 This is useful when you want to:
@@ -858,13 +867,13 @@ validate:
   stage: validate
   script:
     - apt-get update && apt-get install -y jq bc
-    - RULE_MODE=bypass DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+    - RULE_MODE=bypass DRY_RUN=true ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
 deploy:
   stage: deploy
   script:
     - apt-get update && apt-get install -y jq bc
-    - RULE_MODE=bypass echo "yes" | ./vercel-ip-allowlist.sh apply vendor-ips.csv
+    - RULE_MODE=bypass echo "yes" | ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
   only:
     - main
   environment: production
@@ -876,8 +885,8 @@ If you were using bypass rules and want to switch to allowlist:
 
 1. **Export current bypass IPs** (if needed)
 2. **Create allowlist CSV** with all IPs that should have access
-3. **Test with dry run**: `DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv`
-4. **Apply allowlist**: `./vercel-ip-allowlist.sh apply vendor-ips.csv`
+3. **Test with dry run**: `DRY_RUN=true ./vercel-bulk-waf-rules.sh apply vendor-ips.csv`
+4. **Apply allowlist**: `./vercel-bulk-waf-rules.sh apply vendor-ips.csv`
 5. **Remove old bypass rules** (optional, they won't conflict)
 
 > **Warning:** Allowlist rules are more restrictive than bypass rules. Make sure all necessary IPs are included before applying.
@@ -907,5 +916,5 @@ If you were using bypass rules and want to switch to allowlist:
 
 ## Plan Availability
 
-- Firewall features require **Pro** or **Enterprise** plan
+- WAF Custom Rules available on [all Vercel plans](https://vercel.com/docs/plans)
 - Custom rules are part of the Firewall feature set

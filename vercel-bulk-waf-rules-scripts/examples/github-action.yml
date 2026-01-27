@@ -1,10 +1,10 @@
-# GitHub Actions workflow for Vercel IP Allowlist automation
+# GitHub Actions workflow for Vercel Bulk WAF Rules
 #
 # This workflow:
 # 1. Validates IP configurations in PRs (dry run mode)
-# 2. Applies allowlist rules on merge to main
+# 2. Applies WAF rules on merge to main
 #
-# IMPORTANT: This creates rules that BLOCK all traffic except whitelisted IPs!
+# IMPORTANT: Deny mode creates rules that BLOCK all traffic except whitelisted IPs!
 #
 # Required Secrets:
 #   VERCEL_TOKEN: Vercel API token with read:project and write:project scopes
@@ -14,7 +14,7 @@
 #   VERCEL_TEAM_ID: (Optional) Team ID if project belongs to a team
 #   RULE_MODE: Required - "deny" (block all except listed) or "bypass" (bypass WAF for listed)
 
-name: Vercel IP Allowlist
+name: Vercel Bulk WAF Rules
 
 on:
   push:
@@ -63,11 +63,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq bc
+          npm i -g vercel@latest
 
       - name: Validate CSV and token
         run: |
-          chmod +x ./vercel-ip-allowlist.sh
-          DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+          chmod +x ./vercel-bulk-waf-rules.sh
+          DRY_RUN=true ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
   apply:
     name: Apply Allowlist Rules
@@ -86,6 +87,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq bc
+          npm i -g vercel@latest
 
       - name: Create backup before changes
         run: |
@@ -96,9 +98,9 @@ jobs:
 
       - name: Apply IP allowlist rules
         run: |
-          chmod +x ./vercel-ip-allowlist.sh
+          chmod +x ./vercel-bulk-waf-rules.sh
           # Run with explicit 'yes' confirmation via stdin
-          echo "yes" | ./vercel-ip-allowlist.sh apply vendor-ips.csv
+          echo "yes" | ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
         env:
           AUDIT_LOG: ./audit.log
 
@@ -134,11 +136,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq bc
+          npm i -g vercel@latest
 
       - name: Preview changes (dry run)
         run: |
-          chmod +x ./vercel-ip-allowlist.sh
-          DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+          chmod +x ./vercel-bulk-waf-rules.sh
+          DRY_RUN=true ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
@@ -167,11 +170,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq bc
+          npm i -g vercel@latest
 
       - name: Show current allowlist
         run: |
-          chmod +x ./vercel-ip-allowlist.sh
-          ./vercel-ip-allowlist.sh show
+          chmod +x ./vercel-bulk-waf-rules.sh
+          ./vercel-bulk-waf-rules.sh show
 
   disable-rule:
     name: Disable Allowlist Rule
@@ -186,6 +190,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq bc
+          npm i -g vercel@latest
 
       - name: Create backup before disabling
         run: |
@@ -196,8 +201,8 @@ jobs:
 
       - name: Disable allowlist rule
         run: |
-          chmod +x ./vercel-ip-allowlist.sh
-          echo "yes" | ./vercel-ip-allowlist.sh disable
+          chmod +x ./vercel-bulk-waf-rules.sh
+          echo "yes" | ./vercel-bulk-waf-rules.sh disable
 
       - name: Upload backup
         uses: actions/upload-artifact@v4

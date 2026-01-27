@@ -1,5 +1,5 @@
 {
-  "name": "vercel-ip-allowlist-demo",
+  "name": "vercel-bulk-waf-rules-demo",
   "version": "0.1.0",
   "private": true,
   "scripts": {

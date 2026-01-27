@@ -339,7 +339,7 @@ cmd_show() {
   if [ -z "$rule" ]; then
     echo "Status: No allowlist rule configured"
     echo ""
-    echo "Use './vercel-ip-allowlist.sh apply vendor-ips.csv' to create one."
+    echo "Use './vercel-bulk-waf-rules.sh apply vendor-ips.csv' to create one."
   else
     local rule_id
     rule_id=$(echo "$rule" | jq -r '.id')

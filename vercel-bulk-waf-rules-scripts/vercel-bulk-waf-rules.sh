@@ -1,44 +1,51 @@
 #!/bin/bash
 # =============================================================================
-# Vercel IP Allowlist Script
+# Vercel Bulk WAF Rules
 # =============================================================================
 #
-# Creates firewall rules for IP allowlisting with two modes:
+# Bulk manage Vercel WAF (Web Application Firewall) rules via CSV.
+# Supports IP allowlisting, WAF bypass, and automatic CIDR optimization.
+#
+# Two modes available:
 #
 #   DENY MODE (default):   Block all traffic EXCEPT from whitelisted IPs
-#                          Use case: Private apps where only specific vendors can access
+#                          Use case: Private apps, vendor-only access
 #
 #   BYPASS MODE:           Bypass WAF/security checks for whitelisted IPs
-#                          Use case: Public apps where vendors need guaranteed access
-#                          (API callbacks, security scanners, SEO bots, etc.)
+#                          Use case: Public apps with vendor integrations
+#                          (webhooks, scanners, bots, etc.)
 #
 # IMPORTANT:
-# - Firewall is available on Pro and Enterprise plans
+# - WAF Custom Rules available on all Vercel plans
 # - Changes affect traffic immediately
 # - Firewall rules are PROJECT-SCOPED (not team/org-wide)
 # - ALWAYS run with DRY_RUN=true first
 #
 # Usage:
-#   ./vercel-ip-allowlist.sh apply vendor-ips.csv       # Create/update rule (deny mode)
-#   RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv  # Bypass mode
-#   ./vercel-ip-allowlist.sh show                       # Show current allowlist
-#   ./vercel-ip-allowlist.sh disable                    # Disable the rule (don't delete)
-#   ./vercel-ip-allowlist.sh remove                     # Remove a single rule
-#   ./vercel-ip-allowlist.sh purge                      # Remove ALL auto-managed rules (safe)
-#   DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv  # Preview
+#   ./vercel-bulk-waf-rules.sh apply vendor-ips.csv           # Create/update rule (deny mode)
+#   RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply ips.csv # Bypass mode
+#   ./vercel-bulk-waf-rules.sh show                           # Show current rules
+#   ./vercel-bulk-waf-rules.sh disable                        # Disable rule temporarily
+#   ./vercel-bulk-waf-rules.sh remove                         # Remove a single rule
+#   ./vercel-bulk-waf-rules.sh purge                          # Remove ALL auto-managed rules
+#   DRY_RUN=true ./vercel-bulk-waf-rules.sh apply ips.csv     # Preview changes
 #
 # Environment variables:
-#   VERCEL_TOKEN (required): Vercel API token with read:project and write:project scopes
-#   PROJECT_ID (required if not using --projects-file): Project ID or name
-#   TEAM_ID (optional): Team ID if project belongs to a team
+#   VERCEL_TOKEN (optional): Vercel API token - if not set, uses `vercel login` auth
+#   PROJECT_ID (auto): Auto-detected from .vercel/project.json, or set manually
+#   TEAM_ID (auto): Auto-detected from .vercel/project.json, or set manually
 #   TEAM_SLUG (optional): Team slug (alternative to TEAM_ID)
-#   RULE_MODE (optional): "deny" (default) or "bypass" - see modes above
+#   RULE_MODE (optional): "deny" (default) or "bypass"
 #   DRY_RUN (optional): Set to "true" to preview without applying
-#   RULE_HOSTNAME (optional): Hostname pattern for scoped rules (e.g., "api.crocs.com")
+#   RULE_HOSTNAME (optional): Hostname pattern for scoped rules
 #   AUDIT_LOG (optional): Path to audit log file
 #
+# Requirements:
+#   - vercel CLI v50.5.1+ (or uses npx vercel@latest)
+#   - jq for JSON parsing
+#   - bc for calculations
+#
 # Security Notes:
-#   - Never use curl -k or --insecure - all API calls must use verified TLS
 #   - Store tokens in a secrets manager, not in env files committed to git
 #   - Use minimal token scopes: read:project, write:project
 #
@@ -50,11 +57,14 @@ set -euo pipefail
 # Constants & Configuration
 # =============================================================================
 
-readonly API_BASE="https://api.vercel.com"
+readonly SCRIPT_VERSION="2.0.0"
 readonly RATE_LIMIT_DELAY_MS=800
 readonly RATE_LIMIT_BACKOFF_SEC=60
 readonly MAX_RETRIES=3
 readonly MAX_IPS_PER_CONDITION=75  # Vercel limit per condition array
+
+# Vercel CLI command (set in check_dependencies)
+VERCEL_CMD=""
 
 # Rule mode configuration
 # - "deny" (allowlist): Block all traffic except whitelisted IPs
@@ -106,7 +116,7 @@ resolve_rule_mode() {
     echo "  RULE_MODE=deny   - Block all except listed IPs (allowlist)" >&2
     echo "  RULE_MODE=bypass - Bypass WAF for listed IPs" >&2
     echo "" >&2
-    echo "Example: RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv" >&2
+    echo "Example: RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply vendor-ips.csv" >&2
     exit 1
   fi
 }
@@ -130,12 +140,12 @@ configure_rule_mode() {
   
   if [ "$CURRENT_RULE_MODE" = "bypass" ]; then
     RULE_NAME="IP Bypass - Auto-managed"
-    RULE_DESCRIPTION="Bypass WAF/security for whitelisted IPs. Managed by vercel-ip-allowlist.sh"
+    RULE_DESCRIPTION="Bypass WAF/security for whitelisted IPs. Managed by vercel-bulk-waf-rules.sh"
     RULE_IP_OP="inc"       # Match IPs IN the list
     RULE_ACTION="bypass"   # Bypass WAF checks
   else
     RULE_NAME="IP Allowlist - Auto-managed"
-    RULE_DESCRIPTION="Block all traffic except whitelisted IPs. Managed by vercel-ip-allowlist.sh"
+    RULE_DESCRIPTION="Block all traffic except whitelisted IPs. Managed by vercel-bulk-waf-rules.sh"
     RULE_IP_OP="ninc"      # Match IPs NOT IN the list
     RULE_ACTION="deny"     # Deny matching traffic
   fi
@@ -413,23 +423,21 @@ rate_limit_sleep() {
 fetch_team_slug() {
   local team_id="$1"
   
-  if [ -z "$team_id" ] || [ -z "${VERCEL_TOKEN:-}" ]; then
+  if [ -z "$team_id" ]; then
     return 1
   fi
   
   log_debug "Fetching team slug for: $team_id"
   
   local response
-  response=$(curl -s -w "\n%{http_code}" -X GET "${API_BASE}/v2/teams/${team_id}" \
-    -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-    -H "Content-Type: application/json" 2>/dev/null)
+  response=$(api_request "GET" "/v2/teams/${team_id}")
   
   local http_code
   http_code=$(echo "$response" | tail -n1)
   local body
   body=$(echo "$response" | sed '$d')
   
-  if [ "$http_code" -eq 200 ]; then
+  if [ "$http_code" = "200" ]; then
     local slug
     slug=$(echo "$body" | jq -r '.slug // empty' 2>/dev/null)
     if [ -n "$slug" ]; then
@@ -482,7 +490,7 @@ auto_detect_vercel_config() {
   return 0
 }
 
-# Fetch team slug after token is validated (requires API access)
+# Fetch team slug after auth is validated (requires API access)
 resolve_team_slug() {
   # Skip if we already have a slug or no team ID
   if [ -n "${TEAM_SLUG:-}" ] || [ -z "${TEAM_ID:-}" ]; then
@@ -522,78 +530,19 @@ generate_env_exports() {
     echo "export TEAM_ID=\"$org_id\""
   fi
   echo ""
-  echo "# Create a token at https://vercel.com/account/tokens"
-  echo "# Required scopes: read:project, write:project"
-  echo "export VERCEL_TOKEN=\"your-token-here\""
+  echo "# Authentication options:"
+  echo "# Option 1: Run 'vercel login' (recommended for local use)"
+  echo "# Option 2: Set VERCEL_TOKEN (required for CI/CD)"
+  echo "# export VERCEL_TOKEN=\"your-token-here\""
 }
 
 # =============================================================================
-# API Functions
+# API Functions (using vercel api CLI)
 # =============================================================================
 
-# Build team query parameters
-# Some Vercel API endpoints work better with slug, others with teamId
-# We include both when available for maximum compatibility
-get_team_params() {
-  local params=""
-  
-  if [ -n "${TEAM_ID:-}" ]; then
-    params="teamId=${TEAM_ID}"
-  fi
-  
-  if [ -n "${TEAM_SLUG:-}" ]; then
-    if [ -n "$params" ]; then
-      params="${params}&slug=${TEAM_SLUG}"
-    else
-      params="slug=${TEAM_SLUG}"
-    fi
-  fi
-  
-  echo "$params"
-}
-
-# Build query string with project and team
-build_query_string() {
-  local project_id="$1"
-  local team_params
-  team_params=$(get_team_params)
-  
-  if [ -n "$team_params" ]; then
-    echo "?projectId=${project_id}&${team_params}"
-  else
-    echo "?projectId=${project_id}"
-  fi
-}
-
-# Validate token and check API access
-validate_token() {
-  log_info "Validating API token..."
-  
-  local response
-  response=$(api_request "GET" "/v2/user")
-  
-  local http_code
-  http_code=$(echo "$response" | tail -n1)
-  local body
-  body=$(echo "$response" | sed '$d')
-  
-  if [ "$http_code" -ne 200 ]; then
-    log_error "Token validation failed (HTTP $http_code)"
-    log_error "Ensure your token has the required scopes: read:project, write:project"
-    if [ -n "${TEAM_ID:-}${TEAM_SLUG:-}" ]; then
-      log_error "For team projects, also ensure: read:team, write:team"
-    fi
-    echo "$body" | jq '.' 2>/dev/null || echo "$body"
-    return 1
-  fi
-  
-  local username
-  username=$(echo "$body" | jq -r '.user.username // .username // "unknown"')
-  log_info "Authenticated as: $username"
-  return 0
-}
-
-# Make API request with retry logic
+# Make API request using vercel api CLI
+# Returns: response body followed by HTTP status code on last line
+# This maintains compatibility with the original curl-based api_request
 api_request() {
   local method="$1"
   local endpoint="$2"
@@ -601,31 +550,67 @@ api_request() {
   local attempt=1
   
   while [ $attempt -le $MAX_RETRIES ]; do
-    local response
-    local http_code
+    log_debug "API request: $method $endpoint (attempt $attempt)"
     
-    log_debug "API request: $method $endpoint"
+    # Build command arguments
+    local -a args=("api" "$endpoint" -X "$method" --raw)
     
-    if [ -n "$data" ]; then
-      log_debug "Request body: $data"
-      response=$(curl -s -w "\n%{http_code}" -X "$method" "${API_BASE}${endpoint}" \
-        -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-        -H "Content-Type: application/json" \
-        -d "$data")
-    else
-      response=$(curl -s -w "\n%{http_code}" -X "$method" "${API_BASE}${endpoint}" \
-        -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-        -H "Content-Type: application/json")
+    # Pass token if set (CI/CD compatibility)
+    if [ -n "${VERCEL_TOKEN:-}" ]; then
+      args+=(-t "$VERCEL_TOKEN")
     fi
     
-    http_code=$(echo "$response" | tail -n1)
-    local body
-    body=$(echo "$response" | sed '$d')
+    # Add scope for team context (prefer slug over ID)
+    if [ -n "${TEAM_SLUG:-}" ]; then
+      args+=(--scope "$TEAM_SLUG")
+    elif [ -n "${TEAM_ID:-}" ]; then
+      args+=(--scope "$TEAM_ID")
+    fi
     
-    log_debug "Response code: $http_code"
-    log_debug "Response body: $body"
+    # Handle request body
+    local tmp_file=""
+    if [ -n "$data" ]; then
+      log_debug "Request body: $data"
+      tmp_file=$(mktemp)
+      echo "$data" > "$tmp_file"
+      args+=(--input "$tmp_file")
+    fi
     
-    if [ "$http_code" -eq 429 ]; then
+    # Execute the request
+    # Note: We redirect stderr to /dev/null to suppress the CLI banner
+    # (e.g., "Vercel CLI 50.7.1 | api is in beta") which would corrupt JSON parsing
+    local response=""
+    local exit_code=0
+    
+    response=$($VERCEL_CMD "${args[@]}" 2>/dev/null) || exit_code=$?
+    
+    # Clean up temp file
+    [ -n "$tmp_file" ] && rm -f "$tmp_file"
+    
+    log_debug "Response (exit code $exit_code): $response"
+    
+    # Convert exit code to HTTP-like status code for compatibility
+    local http_code
+    if [ $exit_code -eq 0 ]; then
+      http_code="200"
+    else
+      # Try to extract error info from response
+      local error_code
+      error_code=$(echo "$response" | jq -r '.error.code // empty' 2>/dev/null || echo "")
+      
+      if [[ "$response" == *"rate limit"* ]] || [[ "$error_code" == "RATE_LIMITED" ]]; then
+        http_code="429"
+      elif [[ "$response" == *"not found"* ]] || [[ "$error_code" == "NOT_FOUND" ]]; then
+        http_code="404"
+      elif [[ "$response" == *"forbidden"* ]] || [[ "$response" == *"unauthorized"* ]]; then
+        http_code="403"
+      else
+        http_code="500"
+      fi
+    fi
+    
+    # Handle rate limiting with retry
+    if [ "$http_code" = "429" ]; then
       log_warn "Rate limited (429). Backing off for ${RATE_LIMIT_BACKOFF_SEC}s... (attempt $attempt/$MAX_RETRIES)"
       audit_log "RATE_LIMITED" "attempt=$attempt backoff_sec=$RATE_LIMIT_BACKOFF_SEC"
       sleep "$RATE_LIMIT_BACKOFF_SEC"
@@ -633,7 +618,8 @@ api_request() {
       continue
     fi
     
-    echo "$body"
+    # Return response body and HTTP code
+    echo "$response"
     echo "$http_code"
     return 0
   done
@@ -643,70 +629,105 @@ api_request() {
   return 1
 }
 
+# Validate authentication (either via vercel login or VERCEL_TOKEN)
+validate_auth() {
+  log_info "Validating authentication..."
+  
+  # Build command arguments
+  local -a args=("api" "/v2/user" --raw)
+  
+  # Pass token if set
+  if [ -n "${VERCEL_TOKEN:-}" ]; then
+    args+=(-t "$VERCEL_TOKEN")
+  fi
+  
+  local response=""
+  local exit_code=0
+  
+  # Redirect stderr to /dev/null to suppress CLI banner that corrupts JSON parsing
+  response=$($VERCEL_CMD "${args[@]}" 2>/dev/null) || exit_code=$?
+  
+  if [ $exit_code -ne 0 ]; then
+    log_error "Authentication failed"
+    if [ -n "${VERCEL_TOKEN:-}" ]; then
+      log_error "VERCEL_TOKEN is set but may be invalid or expired"
+      log_error "Ensure your token has the required scopes: read:project, write:project"
+    else
+      log_error "Not logged in. Run 'vercel login' or set VERCEL_TOKEN"
+    fi
+    if [ -n "${TEAM_ID:-}${TEAM_SLUG:-}" ]; then
+      log_error "For team projects, also ensure: read:team, write:team"
+    fi
+    echo "$response" | jq '.' 2>/dev/null || echo "$response"
+    return 1
+  fi
+  
+  local username
+  username=$(echo "$response" | jq -r '.user.username // .username // "unknown"')
+  log_info "Authenticated as: $username"
+  return 0
+}
+
 # Get current firewall configuration
-# Tries multiple endpoint formats for compatibility
 get_firewall_config() {
   local project_id="$1"
-  local query_string
-  query_string=$(build_query_string "$project_id")
   
   log_info "Fetching current firewall configuration..."
   
-  # Try the PATCH endpoint to get current config (returns config on success)
-  # First, try to list IP rules which will tell us if firewall is accessible
+  # Build endpoint with query parameters
+  local endpoint="/v1/security/firewall/config/active?projectId=${project_id}"
+  
+  # Add team parameters if available
+  if [ -n "${TEAM_ID:-}" ]; then
+    endpoint="${endpoint}&teamId=${TEAM_ID}"
+  fi
+  if [ -n "${TEAM_SLUG:-}" ]; then
+    endpoint="${endpoint}&slug=${TEAM_SLUG}"
+  fi
+  
   local response
   local http_code
   local body
   
-  # Method 1: Try GET on the project's firewall config
-  log_debug "Trying: GET /v1/security/firewall/config${query_string}"
-  response=$(api_request "GET" "/v1/security/firewall/config${query_string}")
+  log_debug "Trying: GET $endpoint"
+  response=$(api_request "GET" "$endpoint")
   http_code=$(echo "$response" | tail -n1)
   body=$(echo "$response" | sed '$d')
   
-  if [ "$http_code" -eq 200 ]; then
+  if [ "$http_code" = "200" ]; then
     echo "$body"
     return 0
   fi
   
-  # Method 2: Try with explicit "active" as configVersion path parameter
-  log_debug "Trying: GET /v1/security/firewall/config/active${query_string}"
-  response=$(api_request "GET" "/v1/security/firewall/config/active${query_string}")
+  # Try alternative endpoint without /active
+  endpoint="/v1/security/firewall/config?projectId=${project_id}"
+  if [ -n "${TEAM_ID:-}" ]; then
+    endpoint="${endpoint}&teamId=${TEAM_ID}"
+  fi
+  if [ -n "${TEAM_SLUG:-}" ]; then
+    endpoint="${endpoint}&slug=${TEAM_SLUG}"
+  fi
+  
+  log_debug "Trying: GET $endpoint"
+  response=$(api_request "GET" "$endpoint")
   http_code=$(echo "$response" | tail -n1)
   body=$(echo "$response" | sed '$d')
   
-  if [ "$http_code" -eq 200 ]; then
+  if [ "$http_code" = "200" ]; then
     echo "$body"
     return 0
-  fi
-  
-  # Method 3: Try using slug instead of teamId if we have both
-  if [ -n "${TEAM_ID:-}" ] && [ -n "${TEAM_SLUG:-}" ]; then
-    local slug_query="?projectId=${project_id}&slug=${TEAM_SLUG}"
-    log_debug "Trying with slug: GET /v1/security/firewall/config${slug_query}"
-    response=$(api_request "GET" "/v1/security/firewall/config${slug_query}")
-    http_code=$(echo "$response" | tail -n1)
-    body=$(echo "$response" | sed '$d')
-    
-    if [ "$http_code" -eq 200 ]; then
-      echo "$body"
-      return 0
-    fi
   fi
   
   # All methods failed
   log_error "Failed to get firewall config (HTTP $http_code)"
   
-  if [ "$http_code" -eq 404 ]; then
+  if [ "$http_code" = "404" ]; then
     log_error "Firewall config not found. Possible causes:"
     log_error "  - Project is not on Pro/Enterprise plan (Firewall requires Pro+)"
     log_error "  - Firewall is not enabled for this project"
     log_error "  - PROJECT_ID is incorrect: $project_id"
     log_error "  - TEAM_ID/TEAM_SLUG mismatch"
-    log_error ""
-    log_error "Try setting TEAM_SLUG manually (from your Vercel URL):"
-    log_error "  export TEAM_SLUG=\"your-team-slug\""
-  elif [ "$http_code" -eq 403 ]; then
+  elif [ "$http_code" = "403" ]; then
     log_error "Access denied. Check token permissions (need read:project, write:project)."
   fi
   
@@ -773,42 +794,19 @@ find_allowlist_rule() {
   return 0
 }
 
-# Remove all rules matching our name (cleanup duplicates)
-cleanup_duplicate_rules() {
+# Build endpoint with query parameters for firewall operations
+build_firewall_endpoint() {
   local project_id="$1"
-  local config="$2"
+  local endpoint="/v1/security/firewall/config?projectId=${project_id}"
   
-  local rules
-  rules=$(find_allowlist_rules "$config")
-  
-  local rule_count
-  rule_count=$(echo "$rules" | jq 'length' 2>/dev/null || echo "0")
-  
-  if [ "$rule_count" -le 1 ]; then
-    # 0 or 1 rule is fine, no cleanup needed
-    return 0
+  if [ -n "${TEAM_ID:-}" ]; then
+    endpoint="${endpoint}&teamId=${TEAM_ID}"
+  fi
+  if [ -n "${TEAM_SLUG:-}" ]; then
+    endpoint="${endpoint}&slug=${TEAM_SLUG}"
   fi
   
-  log_warn "Found $rule_count duplicate rules. Cleaning up..."
-  
-  # Remove all rules (we'll insert a fresh one after)
-  local query_string
-  query_string=$(build_query_string "$project_id")
-  
-  echo "$rules" | jq -r '.[].id' | while read -r rule_id; do
-    if [ -n "$rule_id" ] && [ "$rule_id" != "null" ]; then
-      log_info "Removing duplicate rule: $rule_id"
-      
-      # IMPORTANT: Vercel API requires "value: null" even for deletions
-      local request_body
-      request_body=$(jq -n --arg id "$rule_id" '{action: "rules.remove", id: $id, value: null}')
-      
-      api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body" > /dev/null
-      rate_limit_sleep
-    fi
-  done
-  
-  log_info "Cleanup complete"
+  echo "$endpoint"
 }
 
 # Create or update the allowlist rule
@@ -819,8 +817,8 @@ update_allowlist_rule() {
   local existing_rule_id="${4:-}"
   local hostname="${RULE_HOSTNAME:-}"
   
-  local query_string
-  query_string=$(build_query_string "$project_id")
+  local endpoint
+  endpoint=$(build_firewall_endpoint "$project_id")
   
   # Build conditions array using mode-specific operator
   local conditions
@@ -843,7 +841,6 @@ update_allowlist_rule() {
   fi
   
   # Build the rule value with mode-specific action
-  # For custom rules, 'action' must be an object with 'mitigate' containing the action
   local rule_value
   rule_value=$(jq -n \
     --arg name "$RULE_NAME" \
@@ -880,14 +877,14 @@ update_allowlist_rule() {
   log_debug "Request body: $request_body"
   
   local response
-  response=$(api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body")
+  response=$(api_request "PATCH" "$endpoint" "$request_body")
   
   local http_code
   http_code=$(echo "$response" | tail -n1)
   local body
   body=$(echo "$response" | sed '$d')
   
-  if [ "$http_code" -eq 200 ]; then
+  if [ "$http_code" = "200" ]; then
     return 0
   else
     log_error "Failed to $action rule (HTTP $http_code)"
@@ -905,8 +902,8 @@ update_allowlist_rule_with_name() {
   local custom_name="${5:-$RULE_NAME}"
   local hostname="${RULE_HOSTNAME:-}"
   
-  local query_string
-  query_string=$(build_query_string "$project_id")
+  local endpoint
+  endpoint=$(build_firewall_endpoint "$project_id")
   
   # Build conditions array using mode-specific operator
   local conditions
@@ -965,14 +962,14 @@ update_allowlist_rule_with_name() {
   log_debug "Request body: $request_body"
   
   local response
-  response=$(api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body")
+  response=$(api_request "PATCH" "$endpoint" "$request_body")
   
   local http_code
   http_code=$(echo "$response" | tail -n1)
   local body
   body=$(echo "$response" | sed '$d')
   
-  if [ "$http_code" -eq 200 ]; then
+  if [ "$http_code" = "200" ]; then
     return 0
   else
     log_error "Failed to $action rule (HTTP $http_code)"
@@ -986,8 +983,8 @@ disable_allowlist_rule() {
   local project_id="$1"
   local rule_id="$2"
   
-  local query_string
-  query_string=$(build_query_string "$project_id")
+  local endpoint
+  endpoint=$(build_firewall_endpoint "$project_id")
   
   local request_body
   request_body=$(jq -n \
@@ -995,14 +992,14 @@ disable_allowlist_rule() {
     '{action: "rules.update", id: $id, value: {active: false}}')
   
   local response
-  response=$(api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body")
+  response=$(api_request "PATCH" "$endpoint" "$request_body")
   
   local http_code
   http_code=$(echo "$response" | tail -n1)
   local body
   body=$(echo "$response" | sed '$d')
   
-  if [ "$http_code" -eq 200 ]; then
+  if [ "$http_code" = "200" ]; then
     return 0
   else
     log_error "Failed to disable rule (HTTP $http_code)"
@@ -1012,14 +1009,13 @@ disable_allowlist_rule() {
 }
 
 # Remove the allowlist rule with retry logic
-# Handles transient Vercel API errors with exponential backoff
 remove_allowlist_rule() {
   local project_id="$1"
   local rule_id="$2"
   local max_retries="${3:-5}"
   
-  local query_string
-  query_string=$(build_query_string "$project_id")
+  local endpoint
+  endpoint=$(build_firewall_endpoint "$project_id")
   
   # IMPORTANT: Vercel API requires "value: null" even for deletions
   local request_body
@@ -1033,14 +1029,14 @@ remove_allowlist_rule() {
   
   while [ "$retry" -lt "$max_retries" ]; do
     local response
-    response=$(api_request "PATCH" "/v1/security/firewall/config${query_string}" "$request_body")
+    response=$(api_request "PATCH" "$endpoint" "$request_body")
     
     local http_code
     http_code=$(echo "$response" | tail -n1)
     local body
     body=$(echo "$response" | sed '$d')
     
-    if [ "$http_code" -eq 200 ]; then
+    if [ "$http_code" = "200" ]; then
       return 0
     fi
     
@@ -1049,7 +1045,7 @@ remove_allowlist_rule() {
     error_code=$(echo "$body" | jq -r '.error.code // empty' 2>/dev/null)
     
     # Retry on internal errors or 5xx status codes
-    if [ "$error_code" = "FIREWALL_INTERNAL_ERROR" ] || [ "$http_code" -ge 500 ]; then
+    if [ "$error_code" = "FIREWALL_INTERNAL_ERROR" ] || [[ "$http_code" =~ ^5 ]]; then
       retry=$((retry + 1))
       if [ "$retry" -lt "$max_retries" ]; then
         log_warn "Vercel error (HTTP $http_code) removing rule $rule_id, retrying in ${delay}s... (attempt $((retry+1))/$max_retries)"
@@ -1069,7 +1065,6 @@ remove_allowlist_rule() {
   log_error "Failed to remove rule $rule_id after $max_retries attempts"
   return 1
 }
-
 
 # =============================================================================
 # CSV Parsing (Optimized)
@@ -1106,7 +1101,6 @@ parse_csv() {
   log_info "Parsing CSV file: $csv_file"
   
   # Use awk to extract IPs from CSV (handles quotes, skips comments/headers)
-  # Uses FS=',' which works for standard CSVs (IP field won't contain commas)
   local extracted_ips
   extracted_ips=$(awk -F',' '
     # Skip empty lines and comments
@@ -1473,7 +1467,7 @@ cmd_show() {
   if [ -z "$rule" ]; then
     echo "No allowlist rule configured."
     echo ""
-    echo "Use './vercel-ip-allowlist.sh apply vendor-ips.csv' to create one."
+    echo "Use './vercel-bulk-waf-rules.sh apply vendor-ips.csv' to create one."
   else
     local rule_id
     rule_id=$(echo "$rule" | jq -r '.id')
@@ -1589,13 +1583,6 @@ cmd_remove() {
 }
 
 # Remove ALL rules managed by this tool (including chunked parts)
-# This only removes rules with names matching our naming pattern
-#
-# Environment variables:
-#   PURGE_DELAY     - Seconds between deletions (default: 1)
-#   PURGE_RETRIES   - Max retries per rule (default: 5)
-#   PURGE_DISABLE_FIRST - Set to "true" to disable rules before removing
-#   PURGE_REVERSE   - Set to "true" to delete in reverse order (last first)
 cmd_purge() {
   local project_id="${PROJECT_ID:?PROJECT_ID is required}"
   local delay="${PURGE_DELAY:-1}"
@@ -1731,9 +1718,9 @@ cmd_purge() {
     log_warn ""
     log_warn "Troubleshooting tips:"
     log_warn "  1. Wait a few minutes and try again (Vercel API may be overloaded)"
-    log_warn "  2. Try: PURGE_DELAY=10 PURGE_RETRIES=10 ./vercel-ip-allowlist.sh purge"
-    log_warn "  3. Try: PURGE_DISABLE_FIRST=true ./vercel-ip-allowlist.sh purge"
-    log_warn "  4. Try: PURGE_REVERSE=true ./vercel-ip-allowlist.sh purge"
+    log_warn "  2. Try: PURGE_DELAY=10 PURGE_RETRIES=10 ./vercel-bulk-waf-rules.sh purge"
+    log_warn "  3. Try: PURGE_DISABLE_FIRST=true ./vercel-bulk-waf-rules.sh purge"
+    log_warn "  4. Try: PURGE_REVERSE=true ./vercel-bulk-waf-rules.sh purge"
     log_warn "  5. Delete manually via Vercel dashboard"
     audit_log "ALLOWLIST_PURGE_PARTIAL" "success=$success_count failed=$fail_count"
     exit 1
@@ -1878,7 +1865,7 @@ cmd_optimize() {
       done
     } > "$output_file"
     
-    log_info "Done! Use './vercel-ip-allowlist.sh apply $output_file' to apply."
+    log_info "Done! Use './vercel-bulk-waf-rules.sh apply $output_file' to apply."
   else
     echo ""
     log_info "To save optimized list, run:"
@@ -1891,8 +1878,11 @@ cmd_setup() {
   
   echo ""
   echo "=============================================="
-  echo "  Vercel IP Allowlist Setup"
+  echo "  Vercel Bulk WAF Rules - Setup"
   echo "=============================================="
+  echo ""
+  echo "Uses the 'vercel api' CLI command (v50.5.1+)"
+  echo "Version: $SCRIPT_VERSION"
   echo ""
   
   # Check for .vercel/project.json
@@ -1916,12 +1906,12 @@ cmd_setup() {
     echo ""
     echo "Or set environment variables manually:"
     echo ""
-    echo "  export VERCEL_TOKEN=\"your-token-here\"  # Required"
     echo "  export PROJECT_ID=\"prj_xxxxx\"          # Get from Vercel dashboard"
     echo "  export TEAM_ID=\"team_xxxxx\"            # Optional, for team projects"
     echo ""
-    echo "Create a token at: https://vercel.com/account/tokens"
-    echo "Required scopes: read:project, write:project"
+    echo "Authentication options:"
+    echo "  Option 1: Run 'vercel login' (recommended for local use)"
+    echo "  Option 2: export VERCEL_TOKEN=\"xxx\"  (required for CI/CD)"
     echo ""
     return 0
   fi
@@ -1946,17 +1936,18 @@ cmd_setup() {
   echo "Option 1: Auto-detect (recommended)"
   echo ""
   echo "  The script auto-detects PROJECT_ID and TEAM_ID from .vercel/project.json."
-  echo "  You only need to set VERCEL_TOKEN:"
+  echo "  For local use, just run 'vercel login' first."
   echo ""
-  echo "  export VERCEL_TOKEN=\"your-token-here\""
-  echo "  ./vercel-ip-allowlist.sh apply vendor-ips.csv"
+  echo "  vercel login"
+  echo "  ./vercel-bulk-waf-rules.sh apply vendor-ips.csv"
   echo ""
   
-  echo "Option 2: Export all variables"
+  echo "Option 2: CI/CD with VERCEL_TOKEN"
   echo ""
   [ -n "$project_id" ] && echo "  export PROJECT_ID=\"$project_id\""
   [ -n "$org_id" ] && echo "  export TEAM_ID=\"$org_id\""
   echo "  export VERCEL_TOKEN=\"your-token-here\""
+  echo "  ./vercel-bulk-waf-rules.sh apply vendor-ips.csv"
   echo ""
   
   echo "----------------------------------------------"
@@ -1968,40 +1959,42 @@ cmd_setup() {
 
 show_usage() {
   cat << EOF
-Vercel IP Allowlist Script
+Vercel Bulk WAF Rules
+Version: $SCRIPT_VERSION
+
+Bulk manage Vercel WAF rules via CSV using the 'vercel api' CLI (v50.5.1+).
 
 DESCRIPTION:
-  Creates firewall rules for IP allowlisting with two modes:
+  Create and manage WAF rules with two modes:
 
   DENY MODE (default):   Block all traffic EXCEPT from whitelisted IPs
-                         Use case: Private apps where only specific vendors can access
+                         Use case: Private apps, vendor-only access
 
   BYPASS MODE:           Bypass WAF/security checks for whitelisted IPs  
-                         Use case: Public apps where vendors need guaranteed access
-                         (API callbacks, security scanners, SEO bots, etc.)
+                         Use case: Public apps with vendor integrations
+                         (webhooks, scanners, bots, etc.)
 
 USAGE:
   $0 setup                        Show environment setup instructions
   $0 apply <csv_file>             Create/update rule with IPs from CSV
-  $0 optimize <csv_file> [output] Optimize IPs into CIDR ranges to reduce count
-  $0 show                         Show current allowlist configuration
-  $0 disable                      Disable the rule (keeps config)
+  $0 optimize <csv_file> [output] Optimize IPs into CIDR ranges
+  $0 show                         Show current firewall rules
+  $0 disable                      Disable rule temporarily
   $0 remove                       Remove a single rule
-  $0 purge                        Remove ALL auto-managed rules (chunked parts too)
+  $0 purge                        Remove ALL auto-managed rules
   $0 backup                       Export current firewall configuration
   $0 --help                       Show this help message
 
 OPTIONS:
-  --projects-file <file>  File containing list of project IDs (one per line)
   --help                  Show this help message
 
 ENVIRONMENT VARIABLES:
-  VERCEL_TOKEN   (required) Vercel API token - create at https://vercel.com/account/tokens
+  VERCEL_TOKEN   (optional) Vercel API token - if not set, uses 'vercel login' auth
   PROJECT_ID     (auto)     Auto-detected from .vercel/project.json, or set manually
   TEAM_ID        (auto)     Auto-detected from .vercel/project.json, or set manually
   TEAM_SLUG      (optional) Team slug (alternative to TEAM_ID)
   RULE_MODE      (optional) "deny" (default) or "bypass" - see modes above
-  RULE_HOSTNAME  (optional) Hostname pattern for scoped rules (e.g., "api.crocs.com")
+  RULE_HOSTNAME  (optional) Hostname pattern for scoped rules (e.g., "api.example.com")
   DRY_RUN        (optional) Set to "true" for preview mode
   AUDIT_LOG      (optional) Path to audit log file
   DEBUG          (optional) Set to "true" for verbose output
@@ -2010,44 +2003,54 @@ ENVIRONMENT VARIABLES:
   Note: PROJECT_ID and TEAM_ID are auto-detected from .vercel/project.json
         if you've run 'vercel link' in your project. Run '$0 setup' for help.
 
+AUTHENTICATION:
+  This script supports two authentication methods:
+
+  1. Vercel CLI login (recommended for local use):
+     $ vercel login
+     $ ./vercel-bulk-waf-rules.sh show
+
+  2. VERCEL_TOKEN (required for CI/CD):
+     $ export VERCEL_TOKEN="your-token-here"
+     $ ./vercel-bulk-waf-rules.sh show
+
 CSV FORMAT:
   ip,vendor_name,notes
   1.2.3.4,Acme Corp,Payment gateway
   5.6.7.0/24,Partner Inc,API integration
 
 EXAMPLES:
-  # First time setup
+  # First time setup (local)
   cd /path/to/your/vercel/project
   vercel link                                    # Creates .vercel/project.json
-  export VERCEL_TOKEN="your-token"               # Only token needed!
-  /path/to/vercel-ip-allowlist.sh apply vendor-ips.csv
+  vercel login                                   # Authenticate
+  ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
+
+  # CI/CD setup
+  export VERCEL_TOKEN="your-token"
+  export PROJECT_ID="prj_xxx"
+  ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
   # DENY MODE (default) - Block all except allowlisted IPs
-  ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
   # BYPASS MODE - Bypass WAF for allowlisted IPs (public apps)
-  RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
   # Preview changes (dry run)
-  DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
-
-  # Preview bypass mode
-  RULE_MODE=bypass DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  DRY_RUN=true ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
   # Show current configuration
-  ./vercel-ip-allowlist.sh show
+  ./vercel-bulk-waf-rules.sh show
 
   # Disable rule temporarily
-  ./vercel-ip-allowlist.sh disable
-
-  # Remove a single rule
-  ./vercel-ip-allowlist.sh remove
+  ./vercel-bulk-waf-rules.sh disable
 
   # Remove ALL auto-managed rules (safe - only removes rules created by this tool)
-  ./vercel-ip-allowlist.sh purge
+  ./vercel-bulk-waf-rules.sh purge
 
   # Scope to specific hostname
-  RULE_HOSTNAME="api.crocs.com" ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  RULE_HOSTNAME="api.crocs.com" ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
 RULE MODES:
   RULE_MODE=deny (default):
@@ -2066,20 +2069,46 @@ EOF
 }
 
 # =============================================================================
-# Main
+# Dependency Check
 # =============================================================================
 
-main() {
-  # Check dependencies
-  if ! command -v curl &> /dev/null || ! command -v jq &> /dev/null; then
-    log_error "Required dependencies: curl, jq"
+check_dependencies() {
+  # Check for jq
+  if ! command -v jq &> /dev/null; then
+    log_error "Required dependency: jq"
+    log_error "Install with: brew install jq (macOS) or apt-get install jq (Linux)"
     exit 1
   fi
   
+  # Check for bc
   if ! command -v bc &> /dev/null; then
     log_error "Required dependency: bc"
     exit 1
   fi
+  
+  # Check for vercel CLI (with npx fallback)
+  if command -v vercel &> /dev/null; then
+    VERCEL_CMD="vercel"
+    local version
+    version=$(vercel --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+    log_debug "Using vercel CLI: $version"
+  elif command -v npx &> /dev/null; then
+    VERCEL_CMD="npx vercel@latest"
+    log_info "Using npx vercel@latest (install vercel globally for faster execution)"
+  else
+    log_error "vercel CLI required. Install with: npm i -g vercel"
+    log_error "Or ensure npx is available (comes with npm)"
+    exit 1
+  fi
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+  # Check dependencies first
+  check_dependencies
   
   if [ $# -eq 0 ]; then
     show_usage
@@ -2089,13 +2118,13 @@ main() {
   local command="$1"
   shift
   
-  # Setup command doesn't require token
+  # Setup command doesn't require auth
   if [ "$command" = "setup" ]; then
     cmd_setup "$@"
     exit 0
   fi
   
-  # Optimize command doesn't require token (local operation)
+  # Optimize command doesn't require auth (local operation)
   if [ "$command" = "optimize" ]; then
     if [ -z "${1:-}" ]; then
       log_error "CSV file required"
@@ -2115,19 +2144,8 @@ main() {
   # Auto-detect PROJECT_ID and TEAM_ID from .vercel/project.json
   auto_detect_vercel_config "$(pwd)" 2>/dev/null || true
   
-  # Check token for all other commands
-  if [ -z "${VERCEL_TOKEN:-}" ]; then
-    log_error "VERCEL_TOKEN environment variable is not set"
-    echo ""
-    echo "Create a token at: https://vercel.com/account/tokens"
-    echo "Required scopes: read:project, write:project"
-    echo ""
-    echo "Run './vercel-ip-allowlist.sh setup' for more help."
-    exit 1
-  fi
-  
-  # Validate token once for all commands
-  if ! validate_token; then
+  # Validate authentication for all other commands
+  if ! validate_auth; then
     exit 1
   fi
   
@@ -2136,7 +2154,6 @@ main() {
   echo ""
   
   # Configure rule mode (interactive prompt if needed)
-  # This must happen before commands that need RULE_NAME to find/create rules
   configure_rule_mode
   
   case "$command" in

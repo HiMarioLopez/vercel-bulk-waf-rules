@@ -1,26 +1,26 @@
-# Vercel IP Allowlist
+# Vercel Bulk WAF Rules
 
-Automation tools to manage IP allowlist rules in Vercel Firewall. Block all traffic except from whitelisted IPs.
+Bulk manage Vercel WAF (Web Application Firewall) rules via CSV. Supports IP allowlisting and WAF bypass.
 
 ## What's Inside
 
 ```plaintext
-vercel-ip-allowlist/
-├── vercel-ip-allowlist-scripts/   # Bash scripts for managing firewall rules
-└── vercel-ip-allowlist-demo/      # Next.js demo app for visualizing allowlists
+vercel-bulk-waf-rules/
+├── vercel-bulk-waf-rules-scripts/   # Bash scripts for managing WAF rules
+└── vercel-bulk-waf-rules-demo/      # Next.js demo app for testing
 ```
 
 ## Quick Start
 
-### 1. Set Environment Variables
+### 1. Setup
 
 ```bash
-export VERCEL_TOKEN="your-vercel-api-token"
-export PROJECT_ID="prj_xxxxxxxxxxxx"
-export TEAM_ID="team_xxxxxxxxxxxx"  # Optional, for team projects
+cd vercel-bulk-waf-rules-scripts
+vercel link    # Link to your project (one-time)
+vercel login   # Authenticate (one-time)
 ```
 
-### 2. Create IP Allowlist CSV
+### 2. Create IP CSV
 
 ```csv
 ip,vendor_name,notes
@@ -31,65 +31,43 @@ ip,vendor_name,notes
 ### 3. Preview Changes
 
 ```bash
-cd vercel-ip-allowlist-scripts
-DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+DRY_RUN=true RULE_MODE=deny ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
 ### 4. Apply
 
 ```bash
-./vercel-ip-allowlist.sh apply vendor-ips.csv
+RULE_MODE=deny ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
-## How It Works
+## Modes
 
-```plaintext
-┌─────────────────────────────────────────────────────────────────┐
-│  ALLOWLIST RULES                                                │
-│  ──────────────────────────                                     │
-│  Whitelisted IPs → Your App                                     │
-│  All Other IPs   → BLOCKED                                      │
-│                                                                 │
-│  Result: ONLY whitelisted traffic reaches your app              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-This creates a single Vercel Firewall rule using the `ninc` (NOT IN) operator to deny traffic from IPs not in your allowlist.
-
-## Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `vercel-ip-allowlist.sh` | Main script - create, update, show, disable, remove allowlist rules |
-| `rollback.sh` | Backup, restore, and manage rule state |
-| `cloudflare-export.sh` | Export IPs from Cloudflare Access policies |
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **deny** | Block all traffic EXCEPT listed IPs | Private apps, vendor-only access |
+| **bypass** | Bypass WAF for listed IPs | Public apps with vendor integrations |
 
 ## Commands
 
 ```bash
-./vercel-ip-allowlist.sh apply <csv>   # Create/update allowlist
-./vercel-ip-allowlist.sh show          # Show current config
-./vercel-ip-allowlist.sh disable       # Temporarily disable (keeps config)
-./vercel-ip-allowlist.sh remove        # Remove rule entirely
-./vercel-ip-allowlist.sh backup        # Export firewall config
+./vercel-bulk-waf-rules.sh apply <csv>    # Create/update WAF rules
+./vercel-bulk-waf-rules.sh show           # Show current rules
+./vercel-bulk-waf-rules.sh optimize <csv> # Optimize IPs into CIDRs
+./vercel-bulk-waf-rules.sh disable        # Temporarily disable
+./vercel-bulk-waf-rules.sh remove         # Remove a single rule
+./vercel-bulk-waf-rules.sh purge          # Remove ALL auto-managed rules
+./vercel-bulk-waf-rules.sh backup         # Export firewall config
 ```
 
 ## Requirements
 
-- Vercel Pro or Enterprise plan (Firewall feature)
-- Bash with `jq` and `bc` installed
-- Vercel API token with `read:project` and `write:project` scopes
+- Vercel account (WAF Custom Rules available on [all plans](https://vercel.com/docs/plans))
+- `vercel` CLI v50.5.1+ (or `npx vercel@latest`)
+- `jq` and `bc` installed
 
 ## Documentation
 
-See [`vercel-ip-allowlist-scripts/README.md`](./vercel-ip-allowlist-scripts/README.md) for complete documentation including:
-
-- Environment variables reference
-- CSV format specification
-- Hostname scoping
-- Rollback operations
-- CI/CD integration (GitHub Actions, GitLab CI)
-- Troubleshooting guide
+See [`vercel-bulk-waf-rules-scripts/README.md`](./vercel-bulk-waf-rules-scripts/README.md) for complete documentation.
 
 ## License
 
