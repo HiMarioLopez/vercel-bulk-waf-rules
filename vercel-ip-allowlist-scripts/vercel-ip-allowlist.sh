@@ -3,8 +3,14 @@
 # Vercel IP Allowlist Script
 # =============================================================================
 #
-# Creates a firewall rule that BLOCKS all traffic except from whitelisted IPs.
-# This is different from bypass rules which only skip WAF checks.
+# Creates firewall rules for IP allowlisting with two modes:
+#
+#   DENY MODE (default):   Block all traffic EXCEPT from whitelisted IPs
+#                          Use case: Private apps where only specific vendors can access
+#
+#   BYPASS MODE:           Bypass WAF/security checks for whitelisted IPs
+#                          Use case: Public apps where vendors need guaranteed access
+#                          (API callbacks, security scanners, SEO bots, etc.)
 #
 # IMPORTANT:
 # - Firewall is available on Pro and Enterprise plans
@@ -13,7 +19,8 @@
 # - ALWAYS run with DRY_RUN=true first
 #
 # Usage:
-#   ./vercel-ip-allowlist.sh apply vendor-ips.csv       # Create/update allowlist rule
+#   ./vercel-ip-allowlist.sh apply vendor-ips.csv       # Create/update rule (deny mode)
+#   RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv  # Bypass mode
 #   ./vercel-ip-allowlist.sh show                       # Show current allowlist
 #   ./vercel-ip-allowlist.sh disable                    # Disable the rule (don't delete)
 #   ./vercel-ip-allowlist.sh remove                     # Remove a single rule
@@ -25,6 +32,7 @@
 #   PROJECT_ID (required if not using --projects-file): Project ID or name
 #   TEAM_ID (optional): Team ID if project belongs to a team
 #   TEAM_SLUG (optional): Team slug (alternative to TEAM_ID)
+#   RULE_MODE (optional): "deny" (default) or "bypass" - see modes above
 #   DRY_RUN (optional): Set to "true" to preview without applying
 #   RULE_HOSTNAME (optional): Hostname pattern for scoped rules (e.g., "api.crocs.com")
 #   AUDIT_LOG (optional): Path to audit log file
@@ -46,9 +54,92 @@ readonly API_BASE="https://api.vercel.com"
 readonly RATE_LIMIT_DELAY_MS=800
 readonly RATE_LIMIT_BACKOFF_SEC=60
 readonly MAX_RETRIES=3
-readonly RULE_NAME="IP Allowlist - Auto-managed"
-readonly RULE_DESCRIPTION="Block all traffic except whitelisted IPs. Managed by vercel-ip-allowlist.sh"
 readonly MAX_IPS_PER_CONDITION=75  # Vercel limit per condition array
+
+# Rule mode configuration
+# - "deny" (allowlist): Block all traffic except whitelisted IPs
+# - "bypass": Bypass WAF for whitelisted IPs (public apps)
+# Mode is determined by: RULE_MODE env var, interactive prompt, or error in CI/CD
+
+# Prompt user to select mode interactively
+select_rule_mode() {
+  echo "" >&2
+  echo "Select rule mode:" >&2
+  echo "" >&2
+  echo "  1) allowlist  - Block ALL traffic except listed IPs" >&2
+  echo "                  Use for: Private apps, vendor-only access" >&2
+  echo "" >&2
+  echo "  2) bypass     - Bypass WAF for listed IPs, allow all other traffic" >&2
+  echo "                  Use for: Public apps with vendor integrations" >&2
+  echo "" >&2
+  read -p "Enter choice [1-2]: " choice
+  case "$choice" in
+    1) echo "deny" ;;
+    2) echo "bypass" ;;
+    *) echo "invalid" ;;
+  esac
+}
+
+# Determine rule mode based on environment and context
+resolve_rule_mode() {
+  if [ -n "${RULE_MODE:-}" ]; then
+    # Explicitly set via environment variable - use it
+    if [[ "$RULE_MODE" != "deny" && "$RULE_MODE" != "bypass" ]]; then
+      echo "ERROR: RULE_MODE must be 'deny' or 'bypass', got: $RULE_MODE" >&2
+      exit 1
+    fi
+    echo "$RULE_MODE"
+  elif [ -t 0 ]; then
+    # Interactive terminal (TTY) - prompt user
+    local mode
+    mode=$(select_rule_mode)
+    if [ "$mode" = "invalid" ]; then
+      echo "ERROR: Invalid selection. Please enter 1 or 2." >&2
+      exit 1
+    fi
+    echo "$mode"
+  else
+    # Non-interactive (CI/CD) - require explicit setting
+    echo "ERROR: RULE_MODE must be set in non-interactive mode." >&2
+    echo "" >&2
+    echo "Set RULE_MODE to 'deny' or 'bypass':" >&2
+    echo "  RULE_MODE=deny   - Block all except listed IPs (allowlist)" >&2
+    echo "  RULE_MODE=bypass - Bypass WAF for listed IPs" >&2
+    echo "" >&2
+    echo "Example: RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv" >&2
+    exit 1
+  fi
+}
+
+# Initialize rule mode (deferred until needed by commands that require it)
+# This allows setup, optimize, and help to work without prompts
+CURRENT_RULE_MODE=""
+RULE_NAME=""
+RULE_DESCRIPTION=""
+RULE_IP_OP=""
+RULE_ACTION=""
+
+# Configure rule settings based on mode
+configure_rule_mode() {
+  if [ -n "$RULE_NAME" ]; then
+    # Already configured
+    return 0
+  fi
+  
+  CURRENT_RULE_MODE=$(resolve_rule_mode)
+  
+  if [ "$CURRENT_RULE_MODE" = "bypass" ]; then
+    RULE_NAME="IP Bypass - Auto-managed"
+    RULE_DESCRIPTION="Bypass WAF/security for whitelisted IPs. Managed by vercel-ip-allowlist.sh"
+    RULE_IP_OP="inc"       # Match IPs IN the list
+    RULE_ACTION="bypass"   # Bypass WAF checks
+  else
+    RULE_NAME="IP Allowlist - Auto-managed"
+    RULE_DESCRIPTION="Block all traffic except whitelisted IPs. Managed by vercel-ip-allowlist.sh"
+    RULE_IP_OP="ninc"      # Match IPs NOT IN the list
+    RULE_ACTION="deny"     # Deny matching traffic
+  fi
+}
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -731,30 +822,33 @@ update_allowlist_rule() {
   local query_string
   query_string=$(build_query_string "$project_id")
   
-  # Build conditions array
+  # Build conditions array using mode-specific operator
   local conditions
   if [ -n "$hostname" ]; then
     # Scoped to specific hostname
     conditions=$(jq -n \
       --arg hostname "$hostname" \
+      --arg ip_op "$RULE_IP_OP" \
       --argjson ips "$ips_json" \
       '[
         {"type": "host", "op": "eq", "value": $hostname},
-        {"type": "ip_address", "op": "ninc", "value": $ips}
+        {"type": "ip_address", "op": $ip_op, "value": $ips}
       ]')
   else
     # Project-wide
     conditions=$(jq -n \
+      --arg ip_op "$RULE_IP_OP" \
       --argjson ips "$ips_json" \
-      '[{"type": "ip_address", "op": "ninc", "value": $ips}]')
+      '[{"type": "ip_address", "op": $ip_op, "value": $ips}]')
   fi
   
-  # Build the rule value
+  # Build the rule value with mode-specific action
   # For custom rules, 'action' must be an object with 'mitigate' containing the action
   local rule_value
   rule_value=$(jq -n \
     --arg name "$RULE_NAME" \
     --arg description "$RULE_DESCRIPTION" \
+    --arg rule_action "$RULE_ACTION" \
     --argjson conditions "$conditions" \
     '{
       name: $name,
@@ -763,7 +857,7 @@ update_allowlist_rule() {
       conditionGroup: [{conditions: $conditions}],
       action: {
         mitigate: {
-          action: "deny"
+          action: $rule_action
         }
       }
     }')
@@ -814,29 +908,32 @@ update_allowlist_rule_with_name() {
   local query_string
   query_string=$(build_query_string "$project_id")
   
-  # Build conditions array
+  # Build conditions array using mode-specific operator
   local conditions
   if [ -n "$hostname" ]; then
     # Scoped to specific hostname
     conditions=$(jq -n \
       --arg hostname "$hostname" \
+      --arg ip_op "$RULE_IP_OP" \
       --argjson ips "$ips_json" \
       '[
         {"type": "host", "op": "eq", "value": $hostname},
-        {"type": "ip_address", "op": "ninc", "value": $ips}
+        {"type": "ip_address", "op": $ip_op, "value": $ips}
       ]')
   else
     # Project-wide
     conditions=$(jq -n \
+      --arg ip_op "$RULE_IP_OP" \
       --argjson ips "$ips_json" \
-      '[{"type": "ip_address", "op": "ninc", "value": $ips}]')
+      '[{"type": "ip_address", "op": $ip_op, "value": $ips}]')
   fi
   
-  # Build the rule value with custom name
+  # Build the rule value with custom name and mode-specific action
   local rule_value
   rule_value=$(jq -n \
     --arg name "$custom_name" \
     --arg description "$RULE_DESCRIPTION" \
+    --arg rule_action "$RULE_ACTION" \
     --argjson conditions "$conditions" \
     '{
       name: $name,
@@ -845,7 +942,7 @@ update_allowlist_rule_with_name() {
       conditionGroup: [{conditions: $conditions}],
       action: {
         mitigate: {
-          action: "deny"
+          action: $rule_action
         }
       }
     }')
@@ -1132,6 +1229,8 @@ cmd_apply() {
   echo ""
   log_info "Project ID: $project_id"
   [ -n "${TEAM_ID:-}" ] && log_info "Team ID: $TEAM_ID"
+  log_info "Rule mode: $CURRENT_RULE_MODE"
+  log_info "Rule name: $RULE_NAME"
   log_info "IPs to allowlist: $ip_count"
   [ "$needs_chunking" = true ] && log_info "Rules to create: $rules_needed"
   log_info "Hostname scope: ${RULE_HOSTNAME:-project-wide}"
@@ -1148,12 +1247,19 @@ cmd_apply() {
     echo "  DRY RUN - No changes made"
     echo "=============================================="
     echo ""
+    echo "Mode: $CURRENT_RULE_MODE"
     if [ "$needs_chunking" = true ]; then
-      echo "Would create $rules_needed allowlist rules with $ip_count total IPs."
+      echo "Would create $rules_needed rules with $ip_count total IPs."
     else
-      echo "Would create/update allowlist rule with $ip_count IPs."
+      echo "Would create/update rule with $ip_count IPs."
     fi
-    echo "All traffic from IPs NOT in this list will be BLOCKED."
+    echo ""
+    if [ "$CURRENT_RULE_MODE" = "bypass" ]; then
+      echo "EFFECT: Listed IPs will BYPASS WAF/security checks."
+      echo "        All other traffic flows normally through security rules."
+    else
+      echo "EFFECT: All traffic from IPs NOT in this list will be BLOCKED."
+    fi
     echo ""
     echo "To apply changes, run without DRY_RUN=true"
     exit 0
@@ -1210,18 +1316,25 @@ cmd_apply() {
   echo "  WARNING"
   echo "=============================================="
   echo ""
+  echo "Mode: $CURRENT_RULE_MODE"
+  echo ""
   if [ "$needs_chunking" = true ]; then
-    echo "This will CREATE $rules_needed allowlist rules."
+    echo "This will CREATE $rules_needed rules."
     if [ "$existing_rule_count" -gt 0 ]; then
       echo "Existing rules will be REMOVED first."
     fi
   elif [ "$action" = "update" ]; then
-    echo "This will UPDATE the existing allowlist rule."
+    echo "This will UPDATE the existing rule."
   else
-    echo "This will CREATE a new allowlist rule."
+    echo "This will CREATE a new rule."
   fi
   echo ""
-  echo "EFFECT: All traffic from IPs NOT in this list will be BLOCKED."
+  if [ "$CURRENT_RULE_MODE" = "bypass" ]; then
+    echo "EFFECT: Listed IPs will BYPASS WAF/security checks."
+    echo "        All other traffic flows normally through security rules."
+  else
+    echo "EFFECT: All traffic from IPs NOT in this list will be BLOCKED."
+  fi
   echo ""
   echo "IPs to allowlist: $ip_count"
   echo ""
@@ -1300,13 +1413,17 @@ cmd_apply() {
       echo "  SUCCESS"
       echo "=============================================="
       echo ""
-      log_info "Created $success_count allowlist rules successfully!"
+      log_info "Created $success_count rules successfully! (mode: $CURRENT_RULE_MODE)"
       log_info "Total whitelisted IPs: $ip_count"
-      log_info "All other traffic will be BLOCKED."
-      audit_log "ALLOWLIST_INSERT_CHUNKED" "ip_count=$ip_count rules=$success_count"
+      if [ "$CURRENT_RULE_MODE" = "bypass" ]; then
+        log_info "Listed IPs will bypass WAF/security checks."
+      else
+        log_info "All other traffic will be BLOCKED."
+      fi
+      audit_log "$(echo "$CURRENT_RULE_MODE" | tr '[:lower:]' '[:upper:]')_INSERT_CHUNKED" "ip_count=$ip_count rules=$success_count"
     else
       log_error "Only $success_count of $rules_needed rules were created"
-      audit_log "ALLOWLIST_INSERT_CHUNKED_PARTIAL" "ip_count=$ip_count rules_created=$success_count rules_needed=$rules_needed"
+      audit_log "$(echo "$CURRENT_RULE_MODE" | tr '[:lower:]' '[:upper:]')_INSERT_CHUNKED_PARTIAL" "ip_count=$ip_count rules_created=$success_count rules_needed=$rules_needed"
       exit 1
     fi
   else
@@ -1317,13 +1434,17 @@ cmd_apply() {
       echo "  SUCCESS"
       echo "=============================================="
       echo ""
-      log_info "Allowlist rule ${action}ed successfully!"
+      log_info "Rule ${action}ed successfully! (mode: $CURRENT_RULE_MODE)"
       log_info "Whitelisted IPs: $ip_count"
-      log_info "All other traffic will be BLOCKED."
-      audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')" "ip_count=$ip_count"
+      if [ "$CURRENT_RULE_MODE" = "bypass" ]; then
+        log_info "Listed IPs will bypass WAF/security checks."
+      else
+        log_info "All other traffic will be BLOCKED."
+      fi
+      audit_log "$(echo "$CURRENT_RULE_MODE" | tr '[:lower:]' '[:upper:]')_$(echo "$action" | tr '[:lower:]' '[:upper:]')" "ip_count=$ip_count"
     else
-      log_error "Failed to $action allowlist rule"
-      audit_log "ALLOWLIST_$(echo "$action" | tr '[:lower:]' '[:upper:]')_FAILED" "ip_count=$ip_count"
+      log_error "Failed to $action rule"
+      audit_log "$(echo "$CURRENT_RULE_MODE" | tr '[:lower:]' '[:upper:]')_$(echo "$action" | tr '[:lower:]' '[:upper:]')_FAILED" "ip_count=$ip_count"
       exit 1
     fi
   fi
@@ -1850,16 +1971,22 @@ show_usage() {
 Vercel IP Allowlist Script
 
 DESCRIPTION:
-  Creates a firewall rule that BLOCKS all traffic except from whitelisted IPs.
-  This is different from bypass rules which only skip WAF checks.
+  Creates firewall rules for IP allowlisting with two modes:
+
+  DENY MODE (default):   Block all traffic EXCEPT from whitelisted IPs
+                         Use case: Private apps where only specific vendors can access
+
+  BYPASS MODE:           Bypass WAF/security checks for whitelisted IPs  
+                         Use case: Public apps where vendors need guaranteed access
+                         (API callbacks, security scanners, SEO bots, etc.)
 
 USAGE:
   $0 setup                        Show environment setup instructions
-  $0 apply <csv_file>             Create/update allowlist rule with IPs from CSV
+  $0 apply <csv_file>             Create/update rule with IPs from CSV
   $0 optimize <csv_file> [output] Optimize IPs into CIDR ranges to reduce count
   $0 show                         Show current allowlist configuration
-  $0 disable                      Disable the allowlist rule (keeps config)
-  $0 remove                       Remove a single allowlist rule
+  $0 disable                      Disable the rule (keeps config)
+  $0 remove                       Remove a single rule
   $0 purge                        Remove ALL auto-managed rules (chunked parts too)
   $0 backup                       Export current firewall configuration
   $0 --help                       Show this help message
@@ -1873,6 +2000,7 @@ ENVIRONMENT VARIABLES:
   PROJECT_ID     (auto)     Auto-detected from .vercel/project.json, or set manually
   TEAM_ID        (auto)     Auto-detected from .vercel/project.json, or set manually
   TEAM_SLUG      (optional) Team slug (alternative to TEAM_ID)
+  RULE_MODE      (optional) "deny" (default) or "bypass" - see modes above
   RULE_HOSTNAME  (optional) Hostname pattern for scoped rules (e.g., "api.crocs.com")
   DRY_RUN        (optional) Set to "true" for preview mode
   AUDIT_LOG      (optional) Path to audit log file
@@ -1894,36 +2022,45 @@ EXAMPLES:
   export VERCEL_TOKEN="your-token"               # Only token needed!
   /path/to/vercel-ip-allowlist.sh apply vendor-ips.csv
 
+  # DENY MODE (default) - Block all except allowlisted IPs
+  ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+  # BYPASS MODE - Bypass WAF for allowlisted IPs (public apps)
+  RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
   # Preview changes (dry run)
   DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
-  # Apply allowlist rule (auto-detects project from .vercel/project.json)
-  ./vercel-ip-allowlist.sh apply vendor-ips.csv
-
-  # Or specify project explicitly
-  PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  # Preview bypass mode
+  RULE_MODE=bypass DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
   # Show current configuration
   ./vercel-ip-allowlist.sh show
 
   # Disable rule temporarily
-  PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh disable
+  ./vercel-ip-allowlist.sh disable
 
   # Remove a single rule
-  PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh remove
+  ./vercel-ip-allowlist.sh remove
 
   # Remove ALL auto-managed rules (safe - only removes rules created by this tool)
   ./vercel-ip-allowlist.sh purge
 
-  # Preview what purge would delete (dry run)
-  DRY_RUN=true ./vercel-ip-allowlist.sh purge
-
   # Scope to specific hostname
-  RULE_HOSTNAME="api.crocs.com" PROJECT_ID=prj_xxx ./vercel-ip-allowlist.sh apply vendor-ips.csv
+  RULE_HOSTNAME="api.crocs.com" ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
-BEHAVIOR COMPARISON:
-  Bypass Rules:        Whitelisted IPs skip WAF, ALL traffic reaches app
-  Allowlist (this):    ONLY whitelisted IPs reach app, all others BLOCKED
+RULE MODES:
+  RULE_MODE=deny (default):
+    - Rule name: "IP Allowlist - Auto-managed"
+    - Logic: Block IPs NOT in the list
+    - Effect: ONLY allowlisted IPs can reach the app
+    - Use for: Private/internal apps, vendor-only access
+
+  RULE_MODE=bypass:
+    - Rule name: "IP Bypass - Auto-managed"
+    - Logic: Bypass WAF for IPs IN the list
+    - Effect: All traffic flows, but listed IPs skip security checks
+    - Use for: Public apps with vendor integrations (webhooks, scanners, bots)
 
 EOF
 }
@@ -1997,6 +2134,10 @@ main() {
   # Resolve team slug from team ID (some API endpoints prefer slug)
   resolve_team_slug
   echo ""
+  
+  # Configure rule mode (interactive prompt if needed)
+  # This must happen before commands that need RULE_NAME to find/create rules
+  configure_rule_mode
   
   case "$command" in
     apply)

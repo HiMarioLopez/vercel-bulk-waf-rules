@@ -1,6 +1,11 @@
-# Vercel IP Allowlist - Block All Except Whitelisted IPs
+# Vercel IP Allowlist - Firewall Rules for Whitelisted IPs
 
-Automation scripts to create IP allowlist rules in Vercel Firewall that **block all traffic except from whitelisted IPs**.
+Automation scripts to create IP allowlist rules in Vercel Firewall with **two modes**:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **deny** (default) | Block all traffic EXCEPT from whitelisted IPs | Private apps, vendor-only access |
+| **bypass** | Bypass WAF/security for whitelisted IPs | Public apps with vendor integrations (webhooks, scanners, bots) |
 
 ## Quick Start
 
@@ -45,11 +50,21 @@ DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
 ### 4. Apply Allowlist
 
+**Deny Mode (default)** - Block all except allowlisted IPs:
+
 ```bash
 ./vercel-ip-allowlist.sh apply vendor-ips.csv
 ```
 
 After applying, **only IPs in your whitelist can access your project**. All other traffic is blocked.
+
+**Bypass Mode** - Bypass WAF for allowlisted IPs (public apps):
+
+```bash
+RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+```
+
+After applying, **listed IPs bypass WAF/security checks**. All other traffic flows normally through security rules. Use this for vendor integrations like webhooks, security scanners, or SEO bots.
 
 ## Commands
 
@@ -64,13 +79,21 @@ After applying, **only IPs in your whitelist can access your project**. All othe
 
 ## How It Works
 
-This tool creates a **single custom firewall rule** that:
+This tool creates a **custom firewall rule** with behavior based on the selected mode:
 
+### Deny Mode (default)
 1. Uses the `ninc` (NOT IN) operator to match IPs **not** in your whitelist
 2. Applies a `deny` action to block those IPs
-3. Can be updated in place as your IP list changes
+3. Rule name: `IP Allowlist - Auto-managed`
 
-### API Under the Hood
+### Bypass Mode
+1. Uses the `inc` (IN) operator to match IPs **in** your whitelist
+2. Applies a `bypass` action to skip WAF/security checks
+3. Rule name: `IP Bypass - Auto-managed`
+
+Both modes support updating the rule in place as your IP list changes.
+
+### API Under the Hood (Deny Mode)
 
 ```json
 {
@@ -111,6 +134,7 @@ This tool creates a **single custom firewall rule** that:
 | `PROJECT_ID` | Auto | Auto-detected from `.vercel/project.json`, or set manually |
 | `TEAM_ID` | Auto | Auto-detected from `.vercel/project.json`, or set manually |
 | `TEAM_SLUG` | No | Team slug (alternative to TEAM_ID) |
+| `RULE_MODE` | No* | `deny` or `bypass` - see modes and interactive selection below |
 | `RULE_HOSTNAME` | No | Scope rule to specific hostname (e.g., "api.crocs.com") |
 | `DRY_RUN` | No | Set to "true" for preview mode |
 | `AUDIT_LOG` | No | Path to audit log file |
@@ -118,6 +142,51 @@ This tool creates a **single custom firewall rule** that:
 | `BACKUP_DIR` | No | Backup directory (default: ./backups) |
 
 > **Note:** If you've run `vercel link` in your project, `PROJECT_ID` and `TEAM_ID` are automatically detected from `.vercel/project.json`. You only need to set `VERCEL_TOKEN`.
+
+## Rule Mode Selection
+
+The script supports two rule modes and will prompt you to select one if not specified:
+
+### Interactive Mode (Terminal)
+
+When running interactively in a terminal, if `RULE_MODE` is not set, you'll see a prompt:
+
+```
+$ ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+Select rule mode:
+
+  1) allowlist  - Block ALL traffic except listed IPs
+                  Use for: Private apps, vendor-only access
+
+  2) bypass     - Bypass WAF for listed IPs, allow all other traffic
+                  Use for: Public apps with vendor integrations
+
+Enter choice [1-2]: 
+```
+
+### CI/CD (Non-Interactive)
+
+In non-interactive environments (CI/CD pipelines), `RULE_MODE` must be set explicitly:
+
+```bash
+# GitHub Actions, GitLab CI, etc.
+RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+```
+
+If `RULE_MODE` is not set in CI/CD, the script will error with instructions.
+
+### Setting Mode Explicitly
+
+You can always skip the prompt by setting `RULE_MODE`:
+
+```bash
+# Allowlist mode (block all except listed IPs)
+RULE_MODE=deny ./vercel-ip-allowlist.sh apply vendor-ips.csv
+
+# Bypass mode (bypass WAF for listed IPs)
+RULE_MODE=bypass ./vercel-ip-allowlist.sh apply vendor-ips.csv
+```
 
 ## CSV Format
 
@@ -285,6 +354,8 @@ Vercel may have limits on the number of IPs per condition (typically 75). For la
 
 ## CI/CD Integration
 
+> **Important:** In CI/CD (non-interactive) environments, `RULE_MODE` must be set explicitly. The script will not prompt and will error if the mode is not specified.
+
 ### GitHub Actions
 
 See [`examples/github-action.yml`](examples/github-action.yml) for a complete workflow that:
@@ -296,7 +367,7 @@ See [`examples/github-action.yml`](examples/github-action.yml) for a complete wo
 **Setup:**
 
 1. Add secrets: `VERCEL_TOKEN`
-2. Add variables: `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID` (optional)
+2. Add variables: `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID` (optional), `RULE_MODE` (required)
 3. Copy the workflow file to `.github/workflows/`
 
 ### GitLab CI
@@ -310,13 +381,13 @@ validate:
   stage: validate
   script:
     - apt-get update && apt-get install -y jq bc
-    - DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
+    - RULE_MODE=bypass DRY_RUN=true ./vercel-ip-allowlist.sh apply vendor-ips.csv
 
 deploy:
   stage: deploy
   script:
     - apt-get update && apt-get install -y jq bc
-    - echo "yes" | ./vercel-ip-allowlist.sh apply vendor-ips.csv
+    - RULE_MODE=bypass echo "yes" | ./vercel-ip-allowlist.sh apply vendor-ips.csv
   only:
     - main
   environment: production

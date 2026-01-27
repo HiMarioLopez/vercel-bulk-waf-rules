@@ -12,6 +12,7 @@
 # Required Variables:
 #   VERCEL_PROJECT_ID: Your Vercel project ID (prj_xxx)
 #   VERCEL_TEAM_ID: (Optional) Team ID if project belongs to a team
+#   RULE_MODE: Required - "deny" (block all except listed) or "bypass" (bypass WAF for listed)
 
 name: Vercel IP Allowlist
 
@@ -48,6 +49,7 @@ env:
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
   PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
   TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+  RULE_MODE: ${{ vars.RULE_MODE }}
 
 jobs:
   validate:
