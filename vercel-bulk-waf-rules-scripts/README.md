@@ -4,8 +4,8 @@ Bulk manage Vercel WAF (Web Application Firewall) rules via CSV with **two modes
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
-| **deny** | Block all traffic EXCEPT from whitelisted IPs | Private apps, vendor-only access |
-| **bypass** | Bypass WAF/security for whitelisted IPs | Public apps with vendor integrations (webhooks, scanners, bots) |
+| **deny** | Block all traffic EXCEPT from listed IPs | Private apps, vendor-only access |
+| **bypass** | Bypass WAF/security for listed IPs | Public apps with vendor integrations (webhooks, scanners, bots) |
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ export TEAM_ID="team_xxxxxxxxxxxx"        # Optional, for team projects
 
 **Need help?** Run `./vercel-bulk-waf-rules.sh setup` for guided setup instructions.
 
-### 2. Create IP Whitelist CSV
+### 2. Create IP List CSV
 
 ```csv
 ip,vendor_name,notes
@@ -69,10 +69,10 @@ Enter choice [1-2]:
 **Explicit Mode (for CI/CD or scripting):**
 
 ```bash
-# Deny mode - Block all except allowlisted IPs
+# Deny mode - Block all except listed IPs
 RULE_MODE=deny ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 
-# Bypass mode - Bypass WAF for allowlisted IPs
+# Bypass mode - Bypass WAF for listed IPs
 RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 ```
 
@@ -83,7 +83,7 @@ RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply vendor-ips.csv
 | Script | Purpose |
 |--------|---------|
 | `vercel-bulk-waf-rules.sh` | Main script for bulk WAF rule management |
-| `rollback.sh` | Backup, restore, enable/disable allowlist rules |
+| `rollback.sh` | Backup, restore, enable/disable WAF rules |
 | `exports/cloudflare-export.sh` | Export IPs from Cloudflare WAF rules |
 | `exports/akamai-export.sh` | Export IPs from Akamai Network Lists |
 
@@ -127,13 +127,13 @@ This tool creates a **custom firewall rule** with behavior based on the selected
 
 ### Deny Mode (default)
 
-1. Uses the `ninc` (NOT IN) operator to match IPs **not** in your whitelist
+1. Uses the `ninc` (NOT IN) operator to match IPs **not** in your list
 2. Applies a `deny` action to block those IPs
 3. Rule name: `IP Allowlist - Auto-managed`
 
 ### Bypass Mode
 
-1. Uses the `inc` (IN) operator to match IPs **in** your whitelist
+1. Uses the `inc` (IN) operator to match IPs **in** your list
 2. Applies a `bypass` action to skip WAF/security checks
 3. Rule name: `IP Bypass - Auto-managed`
 
@@ -167,7 +167,9 @@ ip,vendor_name,notes
 
 > **Note:** Only IPv4 is supported. IPv6 addresses will be rejected.
 
-## Migration from Other WAF Providers
+## Migrating from Other WAF Providers
+
+Export scripts are available in the `exports/` directory to help migrate IP-based WAF rules from other providers.
 
 ### From Cloudflare
 
@@ -176,8 +178,8 @@ ip,vendor_name,notes
 export CF_API_TOKEN="your-cloudflare-token"
 ./exports/cloudflare-export.sh --account abc123def456
 
-# Import to Vercel
-./vercel-bulk-waf-rules.sh apply cloudflare_ips.csv
+# Import to Vercel (choose your mode)
+RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply cloudflare_ips.csv
 ```
 
 See [docs/cloudflare-export.md](docs/cloudflare-export.md) for details.
@@ -187,10 +189,10 @@ See [docs/cloudflare-export.md](docs/cloudflare-export.md) for details.
 ```bash
 # Export from Akamai
 ./exports/akamai-export.sh --list-all
-./exports/akamai-export.sh --network-list 38069_WHITELIST
+./exports/akamai-export.sh --network-list 38069_VENDORIPS
 
-# Import to Vercel
-./vercel-bulk-waf-rules.sh apply akamai_ips.csv
+# Import to Vercel (choose your mode)
+RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply akamai_ips.csv
 ```
 
 See [docs/akamai-export.md](docs/akamai-export.md) for details.
@@ -232,7 +234,7 @@ See [docs/ci-cd-integration.md](docs/ci-cd-integration.md) for complete examples
 - Store tokens in a secrets manager, not in env files
 - Use project-scoped tokens when possible
 - Enable `AUDIT_LOG` for compliance tracking
-- Review allowlist regularly to remove stale entries
+- Review IP lists regularly to remove stale entries
 
 ## Troubleshooting
 
@@ -243,7 +245,7 @@ See [docs/ci-cd-integration.md](docs/ci-cd-integration.md) for complete examples
    - Find the "IP Allowlist - Auto-managed" rule
    - Toggle it off or delete it
 
-2. Or use the API from a whitelisted IP:
+2. Or use the API from an allowed IP:
 
    ```bash
    ./vercel-bulk-waf-rules.sh disable
@@ -256,7 +258,7 @@ See [docs/ci-cd-integration.md](docs/ci-cd-integration.md) for complete examples
 | `IPv6 not supported` | IPv6 in CSV | Use IPv4 only |
 | `HTTP 403` | Insufficient permissions | Check token scopes |
 | `HTTP 404` | Project not found | Verify PROJECT_ID |
-| `No allowlist rule found` | Rule doesn't exist | Run `apply` first |
+| `No managed rule found` | Rule doesn't exist | Run `apply` first |
 
 ## Resources
 

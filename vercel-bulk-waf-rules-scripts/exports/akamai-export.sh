@@ -1,10 +1,14 @@
 #!/bin/bash
 # =============================================================================
-# Akamai IP Allowlist Export Script
+# Akamai WAF Export Script
 # =============================================================================
 #
-# Exports IP addresses from Akamai Network Lists or Application Security
-# configurations to CSV format compatible with Vercel Firewall bypass import.
+# Exports IP addresses and CIDR ranges from Akamai Network Lists or Application
+# Security configurations to CSV format compatible with Vercel Firewall.
+#
+# The exported IPs can be used with Vercel WAF in any mode:
+#   - deny mode:   Block all traffic except from exported IPs
+#   - bypass mode: Skip WAF checks for exported IPs
 #
 # IMPORTANT:
 # - Requires Akamai EdgeGrid credentials in ~/.edgerc file
@@ -794,11 +798,15 @@ export_security_config() {
 
 show_usage() {
   cat << EOF
-Akamai IP Allowlist Export Script
+Akamai WAF Export Script
 Version: $SCRIPT_VERSION
 
-Exports IP addresses from Akamai Network Lists or Application Security
-configurations to CSV format compatible with Vercel Firewall bypass import.
+Exports IP addresses and CIDR ranges from Akamai Network Lists or Application
+Security configurations to CSV format compatible with Vercel Firewall.
+
+The exported IPs can be used with Vercel WAF in any mode:
+  - deny mode:   Block all traffic except from exported IPs
+  - bypass mode: Skip WAF checks for exported IPs
 
 USAGE:
   $0 --list-all                           List all IP network lists
@@ -831,16 +839,16 @@ EXAMPLES:
   ./akamai-export.sh --list-all
 
   # Export a specific network list
-  ./akamai-export.sh --network-list 38069_WHITELIST
+  ./akamai-export.sh --network-list 38069_VENDORIPS
 
   # Export to custom file
-  OUTPUT_FILE="vendor_ips.csv" ./akamai-export.sh --network-list 38069_WHITELIST
+  OUTPUT_FILE="vendor_ips.csv" ./akamai-export.sh --network-list 38069_VENDORIPS
 
   # Use a different .edgerc section
   AKAMAI_SECTION=production ./akamai-export.sh --list-all
 
   # Dry run (preview without writing)
-  DRY_RUN=true ./akamai-export.sh --network-list 38069_WHITELIST
+  DRY_RUN=true ./akamai-export.sh --network-list 38069_VENDORIPS
 
   # Debug mode
   DEBUG=true ./akamai-export.sh --list-all
@@ -857,7 +865,7 @@ EXAMPLES:
 
 OUTPUT FORMAT:
   CSV with columns: ip,notes,mode,created_on
-  Compatible with Vercel Firewall bypass import scripts
+  Compatible with vercel-bulk-waf-rules.sh
 
 EXIT CODES:
   0  - Success
@@ -875,10 +883,10 @@ MIGRATION WORKFLOW:
   ./akamai-export.sh --list-all
 
   # Step 2: Export the desired list
-  ./akamai-export.sh --network-list 38069_WHITELIST
+  ./akamai-export.sh --network-list 38069_VENDORIPS
 
-  # Step 3: Preview import to Vercel
-  DRY_RUN=true ./vercel-bulk-waf-rules.sh apply akamai_ips.csv
+  # Step 3: Preview import to Vercel (choose your mode)
+  DRY_RUN=true RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply akamai_ips.csv
 
   # Step 4: Apply to Vercel
   RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply akamai_ips.csv

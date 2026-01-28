@@ -1,16 +1,23 @@
-# Cloudflare IP Allowlist Export
+# Cloudflare WAF Export
 
-The `exports/cloudflare-export.sh` script exports IP addresses from Cloudflare's IP Access Rules or IP Lists to a CSV format compatible with the Vercel allowlist script. This is particularly useful when migrating IP allowlists from Cloudflare to Vercel.
+The `exports/cloudflare-export.sh` script exports IP addresses and CIDR ranges from Cloudflare's IP Access Rules or IP Lists to CSV format compatible with Vercel Firewall.
+
+## Overview
+
+This script extracts IP-based rules from Cloudflare so you can migrate or sync them to Vercel. The exported IPs can be used with Vercel's WAF in **any mode**:
+
+- **Deny mode**: Block all traffic except from exported IPs
+- **Bypass mode**: Skip WAF checks for exported IPs
+- **Any custom rule**: Use exported IPs as input for your own firewall logic
 
 ## Why Use This Script?
 
 - **No UI Export**: Cloudflare doesn't provide a UI option to export IP Access Rules — the API is the only way
 - **Handles Pagination**: Automatically fetches all pages for large IP lists (600+ IPs)
 - **Vercel-Compatible Output**: Exports to CSV format that works directly with `vercel-bulk-waf-rules.sh`
+- **Multiple Sources**: Export from IP Access Rules (account/zone) or IP Lists
+- **Filter by Mode**: Export only specific rule types (allow, block, challenge) or all
 - **Robust Error Handling**: Automatic retry with exponential backoff, rate limit handling
-- **Debug Mode**: Verbose output for troubleshooting with `DEBUG=true`
-- **Audit Logging**: Track all operations with `AUDIT_LOG` for compliance
-- **Dry Run Mode**: Preview without making changes with `DRY_RUN=true`
 
 ## Prerequisites
 
@@ -79,13 +86,13 @@ Account-level rules apply to all zones in your account:
 ```bash
 export CF_API_TOKEN="your-cloudflare-api-token"
 
-# Export all whitelisted IPs (default)
+# Export IPs with "whitelist" mode (default)
 ./exports/cloudflare-export.sh --account abc123def456
 
 # Export to a specific file
 OUTPUT_FILE="vendor_ips.csv" ./exports/cloudflare-export.sh --account abc123def456
 
-# Export blocked IPs instead
+# Export IPs with "block" mode instead
 MODE_FILTER=block ./exports/cloudflare-export.sh --account abc123def456
 
 # Export all modes (whitelist, block, challenge)
@@ -99,7 +106,7 @@ Zone-level rules apply only to a specific domain:
 ```bash
 export CF_API_TOKEN="your-cloudflare-api-token"
 
-# Export whitelisted IPs for a specific zone
+# Export IPs for a specific zone
 ./exports/cloudflare-export.sh --zone xyz789abc123
 
 # Export to specific file
@@ -133,7 +140,14 @@ ip,notes,mode,created_on
 "10.0.0.0/8","Internal network","whitelist","2024-01-15T10:31:00Z"
 ```
 
-This format is directly compatible with `vercel-bulk-waf-rules.sh`.
+| Column | Description |
+|--------|-------------|
+| `ip` | IP address or CIDR range |
+| `notes` | Original rule notes from Cloudflare |
+| `mode` | Original mode in Cloudflare (whitelist/block/challenge) |
+| `created_on` | Rule creation timestamp |
+
+This format is directly compatible with `vercel-bulk-waf-rules.sh`. The `mode` column reflects the source system's classification and doesn't affect how you use the IPs in Vercel.
 
 ## API Endpoints Used
 
@@ -152,7 +166,7 @@ All endpoints use the base URL: `https://api.cloudflare.com/client/v4/`
 |----------|----------|---------|-------------|
 | `CF_API_TOKEN` | Yes | - | Cloudflare API token |
 | `OUTPUT_FILE` | No | `cloudflare_ips.csv` | Output CSV file path |
-| `MODE_FILTER` | No | `whitelist` | Filter by mode: `whitelist`, `block`, `challenge`, or empty for all |
+| `MODE_FILTER` | No | `whitelist` | Filter by Cloudflare mode: `whitelist`, `block`, `challenge`, or empty for all |
 | `DRY_RUN` | No | `false` | Set to `true` to preview without making changes |
 | `DEBUG` | No | `false` | Set to `true` for verbose debug output |
 | `AUDIT_LOG` | No | - | Path to audit log file for tracking operations |
@@ -173,7 +187,7 @@ All endpoints use the base URL: `https://api.cloudflare.com/client/v4/`
 
 ## Migration Workflow
 
-Complete workflow to migrate from Cloudflare to Vercel:
+Complete workflow to migrate WAF IP rules from Cloudflare to Vercel:
 
 ```bash
 # Step 1: Set up Cloudflare token
@@ -186,12 +200,18 @@ export CF_API_TOKEN="your-cloudflare-token"
 # Step 3: Set up Vercel token (in your Vercel project directory)
 export VERCEL_TOKEN="your-vercel-token"
 
-# Step 4: Preview what will be applied
-DRY_RUN=true ./vercel-bulk-waf-rules.sh apply cloudflare_ips.csv
+# Step 4: Preview what will be applied (choose your mode)
+DRY_RUN=true RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply cloudflare_ips.csv
 
 # Step 5: Apply to Vercel
 RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply cloudflare_ips.csv
 ```
+
+**Choose your Vercel mode based on your use case:**
+- `RULE_MODE=deny` - Block all traffic EXCEPT from these IPs (private apps)
+- `RULE_MODE=bypass` - Skip WAF for these IPs (vendor integrations)
+
+> **Note:** The Cloudflare `mode` in your exported CSV doesn't automatically map to Vercel modes. You choose how to use the IPs in Vercel.
 
 ## Debugging
 
@@ -266,7 +286,7 @@ The script includes robust error handling:
 
 ## IP Access Rules vs IP Lists
 
-Cloudflare has two ways to manage IP allowlists:
+Cloudflare has two ways to manage IP-based rules:
 
 | Feature | IP Access Rules | IP Lists |
 |---------|-----------------|----------|

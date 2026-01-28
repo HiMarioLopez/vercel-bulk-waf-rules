@@ -1,11 +1,19 @@
-# Akamai IP Allowlist Export
+# Akamai WAF Export
 
-The `exports/akamai-export.sh` script exports IP addresses from Akamai Network Lists or Application Security configurations to CSV format compatible with Vercel Firewall import.
+The `exports/akamai-export.sh` script exports IP addresses and CIDR ranges from Akamai Network Lists or Application Security configurations to CSV format compatible with Vercel Firewall.
+
+## Overview
+
+This script extracts IP-based rules from Akamai's security products so you can migrate or sync them to Vercel. The exported IPs can be used with Vercel's WAF in **any mode**:
+
+- **Deny mode**: Block all traffic except from exported IPs
+- **Bypass mode**: Skip WAF checks for exported IPs
+- **Any custom rule**: Use exported IPs as input for your own firewall logic
 
 ## Why Use This Script?
 
 - **Pure Bash Implementation**: No Python dependency - uses `openssl` for EdgeGrid authentication
-- **Network Lists API**: Export shared IP/CIDR lists used across Akamai security products
+- **Network Lists API**: Export shared IP/CIDR lists used across Akamai security products (Kona Site Defender, Web App Protector, App & API Protector, Bot Manager)
 - **Application Security API**: Extract IP match conditions from WAF rules and exceptions
 - **Vercel-Compatible Output**: Exports to CSV format that works directly with `vercel-bulk-waf-rules.sh`
 - **Robust Error Handling**: Automatic retry with exponential backoff, rate limit handling
@@ -90,14 +98,14 @@ Output:
   Available Network Lists (IP type)
 ==============================================
 
-ID: 38069_INTERNALWHITELIST
-  Name: Internal Whitelist
+ID: 38069_INTERNALIPS
+  Name: Internal Network IPs
   Elements: 150
   Type: IP
   Updated: 2024-01-15T10:30:00Z
 
 ID: 45123_VENDORIPS
-  Name: Vendor IP Allowlist
+  Name: Vendor IPs
   Elements: 75
   Type: IP
   Updated: 2024-01-10T14:20:00Z
@@ -111,7 +119,7 @@ ID: 45123_VENDORIPS
 ### Export a Network List
 
 ```bash
-./exports/akamai-export.sh --network-list 38069_INTERNALWHITELIST
+./exports/akamai-export.sh --network-list 38069_INTERNALIPS
 ```
 
 Output:
@@ -120,10 +128,10 @@ Output:
 [INFO]   Akamai Network List Export
 [INFO] ==============================================
 [INFO] 
-[INFO] List ID:     38069_INTERNALWHITELIST
+[INFO] List ID:     38069_INTERNALIPS
 [INFO] Output file: akamai_ips.csv
 [INFO] 
-[INFO] List name:     Internal Whitelist
+[INFO] List name:     Internal Network IPs
 [INFO] List type:     IP
 [INFO] Element count: 150
 [INFO] Last updated:  2024-01-15T10:30:00Z
@@ -132,15 +140,15 @@ Output:
 [INFO]   Export Summary
 [INFO] ==============================================
 [INFO] 
-[INFO]   List name:        Internal Whitelist
+[INFO]   List name:        Internal Network IPs
 [INFO]   IPs exported:     150
 [INFO]   Time elapsed:     2s
 [INFO]   Output file:      akamai_ips.csv
 [INFO] 
 [INFO] First 5 entries:
-"192.0.2.1","Internal Whitelist","whitelist","2024-01-15T10:30:00Z"
-"192.0.2.2","Internal Whitelist","whitelist","2024-01-15T10:30:00Z"
-"10.0.0.0/8","Internal Whitelist","whitelist","2024-01-15T10:30:00Z"
+"192.0.2.1","Internal Network IPs","whitelist","2024-01-15T10:30:00Z"
+"192.0.2.2","Internal Network IPs","whitelist","2024-01-15T10:30:00Z"
+"10.0.0.0/8","Internal Network IPs","whitelist","2024-01-15T10:30:00Z"
 ```
 
 ### Export from Security Config
@@ -174,11 +182,18 @@ The script outputs CSV with these columns:
 
 ```csv
 ip,notes,mode,created_on
-"192.0.2.1","Internal Whitelist","whitelist","2024-01-15T10:30:00Z"
-"10.0.0.0/8","Internal Whitelist","whitelist","2024-01-15T10:30:00Z"
+"192.0.2.1","Internal Network IPs","whitelist","2024-01-15T10:30:00Z"
+"10.0.0.0/8","Internal Network IPs","whitelist","2024-01-15T10:30:00Z"
 ```
 
-This format is directly compatible with `vercel-bulk-waf-rules.sh`.
+| Column | Description |
+|--------|-------------|
+| `ip` | IP address or CIDR range |
+| `notes` | Source list name (for reference) |
+| `mode` | Original mode in source system (informational) |
+| `created_on` | Last update timestamp |
+
+This format is directly compatible with `vercel-bulk-waf-rules.sh`. The `mode` column reflects the source system's classification and doesn't affect how you use the IPs in Vercel.
 
 ## API Endpoints Used
 
@@ -215,7 +230,7 @@ The script automatically handles rate limiting with retry and backoff.
 
 ## Migration Workflow
 
-Complete workflow to migrate IP allowlists from Akamai to Vercel:
+Complete workflow to migrate WAF IP rules from Akamai to Vercel:
 
 ```bash
 # Step 1: Set up Akamai credentials (one-time)
@@ -226,14 +241,18 @@ chmod 600 ~/.edgerc
 ./exports/akamai-export.sh --list-all
 
 # Step 3: Export the desired list
-./exports/akamai-export.sh --network-list 38069_WHITELIST
+./exports/akamai-export.sh --network-list 38069_VENDORIPS
 
-# Step 4: Preview import to Vercel
-DRY_RUN=true ./vercel-bulk-waf-rules.sh apply akamai_ips.csv
+# Step 4: Preview import to Vercel (choose your mode)
+DRY_RUN=true RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply akamai_ips.csv
 
 # Step 5: Apply to Vercel
 RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply akamai_ips.csv
 ```
+
+**Choose your Vercel mode based on your use case:**
+- `RULE_MODE=deny` - Block all traffic EXCEPT from these IPs (private apps)
+- `RULE_MODE=bypass` - Skip WAF for these IPs (vendor integrations)
 
 ## Debugging
 
@@ -242,10 +261,10 @@ RULE_MODE=bypass ./vercel-bulk-waf-rules.sh apply akamai_ips.csv
 DEBUG=true ./exports/akamai-export.sh --list-all
 
 # Enable audit logging
-AUDIT_LOG="./akamai-export.log" ./exports/akamai-export.sh --network-list 38069_WHITELIST
+AUDIT_LOG="./akamai-export.log" ./exports/akamai-export.sh --network-list 38069_VENDORIPS
 
 # Dry run to preview without writing files
-DRY_RUN=true ./exports/akamai-export.sh --network-list 38069_WHITELIST
+DRY_RUN=true ./exports/akamai-export.sh --network-list 38069_VENDORIPS
 ```
 
 ## Troubleshooting
@@ -306,7 +325,7 @@ Store the individual values as secrets in your CI/CD system:
 
 ## Network Lists vs Security Config
 
-Akamai has two main sources for IP allowlists:
+Akamai has two main sources for IP-based WAF rules:
 
 | Source | Best For | API |
 |--------|----------|-----|

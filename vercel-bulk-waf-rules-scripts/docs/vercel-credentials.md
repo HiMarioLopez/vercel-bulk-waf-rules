@@ -1,6 +1,6 @@
 # Vercel Credentials Setup
 
-This guide explains how to get the credentials needed to run the Vercel IP allowlist scripts.
+This guide explains how to get the credentials needed to run the Vercel Bulk WAF Rules scripts.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ export TEAM_ID="team_xxxxxxxxxxxx"  # Optional, for team projects
 1. Go to [vercel.com/account/tokens](https://vercel.com/account/tokens)
    - Make sure you're under **Personal Account** (not Teams) in the top-left dropdown
 2. Click **Create** to open the token creation modal
-3. Enter a descriptive name (e.g., "IP Allowlist Script")
+3. Enter a descriptive name (e.g., "WAF Rules Script")
 4. Click **Create Token**
 5. **Choose the scope** from the dropdown:
    - Select your **Personal Account** for personal projects

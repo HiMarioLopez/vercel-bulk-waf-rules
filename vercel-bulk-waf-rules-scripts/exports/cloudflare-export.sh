@@ -1,10 +1,14 @@
 #!/bin/bash
 # =============================================================================
-# Cloudflare IP Allowlist Export Script
+# Cloudflare WAF Export Script
 # =============================================================================
 #
-# Exports IP addresses from Cloudflare IP Access Rules or IP Lists to CSV
-# format compatible with Vercel Firewall bypass import.
+# Exports IP addresses and CIDR ranges from Cloudflare IP Access Rules or IP
+# Lists to CSV format compatible with Vercel Firewall.
+#
+# The exported IPs can be used with Vercel WAF in any mode:
+#   - deny mode:   Block all traffic except from exported IPs
+#   - bypass mode: Skip WAF checks for exported IPs
 #
 # IMPORTANT:
 # - Requires Cloudflare API Token with "Account Firewall Access Rules Read" 
@@ -253,7 +257,14 @@ verify_token_api() {
 
 show_usage() {
   cat << EOF
-Cloudflare IP Allowlist Export Script
+Cloudflare WAF Export Script
+
+Exports IP addresses and CIDR ranges from Cloudflare IP Access Rules or IP
+Lists to CSV format compatible with Vercel Firewall.
+
+The exported IPs can be used with Vercel WAF in any mode:
+  - deny mode:   Block all traffic except from exported IPs
+  - bypass mode: Skip WAF checks for exported IPs
 
 USAGE:
   $0 --account <account_id>              Export account-level IP Access Rules
@@ -266,19 +277,19 @@ USAGE:
 ENVIRONMENT VARIABLES:
   CF_API_TOKEN    (required) Cloudflare API token
   OUTPUT_FILE     (optional) Output CSV file path (default: cloudflare_ips.csv)
-  MODE_FILTER     (optional) Filter by mode: whitelist, block, challenge (default: whitelist)
+  MODE_FILTER     (optional) Filter by Cloudflare mode: whitelist, block, challenge (default: whitelist)
   DRY_RUN         (optional) Set to "true" for preview mode (no file writes)
   DEBUG           (optional) Set to "true" for verbose debug output
   AUDIT_LOG       (optional) Path to audit log file for tracking operations
 
 EXAMPLES:
-  # Export all whitelisted IPs from account
+  # Export IPs with "whitelist" mode from account
   CF_API_TOKEN="token" ./cloudflare-export.sh --account abc123def456
 
   # Export to specific file
   OUTPUT_FILE="vendor_ips.csv" ./cloudflare-export.sh --account abc123def456
 
-  # Export all modes (not just whitelist)
+  # Export all modes (whitelist, block, challenge)
   MODE_FILTER="" ./cloudflare-export.sh --zone xyz789
 
   # Dry run (preview without writing files)
@@ -292,7 +303,7 @@ EXAMPLES:
 
 OUTPUT FORMAT:
   CSV with columns: ip,notes,mode,created_on
-  Compatible with Vercel Firewall bypass import scripts
+  Compatible with vercel-bulk-waf-rules.sh
 
 EXIT CODES:
   0  - Success
